@@ -1330,20 +1330,25 @@ function drawPhaseBar(){
                phase==='towing'?2:
                (tug&&tug.x>BRIDGE_X)?1:0;
 
-  const sw=74, gap=6, total=stages.length*(sw+gap)-gap;
-  let sx=(W-total)/2;
-  const by=H-26;
-  for(let i=0;i<stages.length;i++){
+  // Zona segura: entre o joystick (dir. ~102) e o botão de ação (esq. W-146)
+  const safeL=110, safeR=W-154, safeW=Math.max(120,safeR-safeL);
+  const gap=4, n=stages.length;
+  // largura de cada etapa adaptada à zona segura (entre 40 e 74)
+  let sw=clamp((safeW-gap*(n-1))/n,40,74);
+  let total=n*sw+gap*(n-1);
+  let sx=safeL+(safeW-total)/2;
+  const bh=H<420?15:18, by=H-bh-8;
+  const fontBase=H<420?8:9;
+  for(let i=0;i<n;i++){
     const done=i<curIdx, active=i===curIdx;
-    ctx.beginPath(); ctx.roundRect(sx,by,sw,18,5);
+    ctx.beginPath(); ctx.roundRect(sx,by,sw,bh,5);
     ctx.fillStyle=done?'rgba(0,200,100,.42)':active?'rgba(0,150,255,.52)':'rgba(0,0,0,.32)';
     ctx.fill();
     ctx.strokeStyle=done?'#00ff88':active?'#00aaff':'rgba(255,255,255,.12)';
     ctx.lineWidth=1.5; ctx.stroke();
     ctx.fillStyle=done?'#00ff88':active?'#7df4ff':'rgba(255,255,255,.28)';
-    ctx.font=`bold ${active?10:9}px monospace`; ctx.textAlign='center'; ctx.textBaseline='middle';
-    ctx.fillText(stages[i].label,sx+sw/2,by+9);
-    if(i<stages.length-1){ctx.fillStyle='rgba(255,255,255,.18)';ctx.fillText('›',sx+sw+gap/2+1,by+9);}
+    ctx.font=`bold ${active?fontBase+1:fontBase}px monospace`; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(stages[i].label,sx+sw/2,by+bh/2);
     sx+=sw+gap;
   }
 }
