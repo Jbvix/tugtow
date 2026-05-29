@@ -148,14 +148,14 @@ const imgTug=svgImg(tugSVG), imgShip=svgImg(shipSVG);
 const imgBuoy=svgImg(buoySVG), imgBuoyHit=svgImg(buoyHitSVG);
 
 // ─── World constants ──────────────────────────────────────────────────────────
-// Canal com o dobro do comprimento (0 → CHANNEL_END)
-const CHANNEL_END = 1920;
-const BRIDGE_X    = 1840;
-const SHIP_X      = 2110;
-const CORRIDOR_X  = 2390;
-const BASIN_X     = 2830;
-const PORT_X      = 3180;
-const WORLD_W     = 3860;
+// Canal estendido (0 → CHANNEL_END)
+const CHANNEL_END = 2880;
+const BRIDGE_X    = 2800;
+const SHIP_X      = 3070;
+const CORRIDOR_X  = 3350;
+const BASIN_X     = 3790;
+const PORT_X      = 4140;
+const WORLD_W     = 4820;
 
 const TUG_SPEED=3.4, TUG_TURN=0.048;
 const CABLE_LEN=72, CABLE_STIFF=0.05;
@@ -168,7 +168,7 @@ const SHIP_LEN=90, SHIP_WID=24;
 // ─── State ────────────────────────────────────────────────────────────────────
 let gameState='menu', phase;
 let camX=0, waveOffset=0;
-let lives, fuel, maintenance, score, mission;
+let lives, fuel, maintenance, score, mission, gameTime;
 let invTimer=0, fuelWarnTimer=0;
 let tug, ship, buoys, berths, targetBerth;
 let vessels, collectibles, bridge, crates;
@@ -246,10 +246,14 @@ function buildWorld(){
 
   collectibles=[
     {type:'wrench',x:230,  y:H*0.22,collected:false,ph:0},
-    {type:'fuel',  x:530,  y:H*0.72,collected:false,ph:1.6},
+    {type:'fuel',  x:560,  y:H*0.72,collected:false,ph:1.6},
     {type:'wrench',x:1080, y:H*0.30,collected:false,ph:2.2},
-    {type:'fuel',  x:1380, y:H*0.78,collected:false,ph:0.9},
-    {type:'key',   x:1650, y:H*0.50,collected:false,ph:3.1},
+    {type:'fuel',  x:1480, y:H*0.78,collected:false,ph:0.9},
+    {type:'wrench',x:1950, y:H*0.20,collected:false,ph:1.2},
+    {type:'fuel',  x:2300, y:H*0.66,collected:false,ph:2.7},
+    {type:'key',   x:2600, y:H*0.50,collected:false,ph:3.1},
+    // Posto de combustível logo após a ponte
+    {type:'fuel',  x:BRIDGE_X+140, y:H*0.40,collected:false,ph:0.4},
   ];
 
   vessels=makeVessels();
@@ -274,15 +278,18 @@ function makeVessels(){
   ];
 }
 
-// Caixas/contêineres boiando — colidir reduz manutenção (avaria o casco)
+// Contêineres boiando — colidir reduz manutenção (avaria o casco)
+const CONTAINER_COLORS=['#c0502a','#2a6ca0','#caa030','#3a8a5a','#9a3a4a','#5a5a6a'];
 function makeCrates(){
-  const cs=[], xs=[340,610,820,1010,1190,1430,1560,1740];
+  const cs=[], xs=[340,610,820,1010,1190,1430,1560,1740,
+                   1980,2180,2360,2560,2720,2840];
   for(const x of xs){
     cs.push({
       x, y:H*(0.14+Math.random()*0.72),
-      vy:(Math.random()-0.5)*0.5, drift:(Math.random()-0.5)*0.35,
-      r:13+Math.random()*8, spin:Math.random()*Math.PI, hit:false,
-      tone:Math.random()<0.5?'#8a5a28':'#9a7038'
+      vy:(Math.random()-0.5)*0.45, drift:(Math.random()-0.5)*0.30,
+      w:30+Math.random()*16, hgt:18+Math.random()*6,
+      spin:Math.random()*Math.PI, hit:false,
+      color:CONTAINER_COLORS[Math.floor(Math.random()*CONTAINER_COLORS.length)]
     });
   }
   return cs;
@@ -305,6 +312,7 @@ function handleAction(){
 // ─── Update ───────────────────────────────────────────────────────────────────
 function update(dt){
   waveOffset+=0.010;
+  gameTime+=dt/1000;
   if(invTimer>0) invTimer--;
 
   // Input
@@ -422,15 +430,31 @@ function updateVessels(){
 
 function updateCrates(){
   for(const c of crates){
-    c.spin+=0.012;
+    const cr=Math.max(c.w,c.hgt)/2;
+    c.spin+=0.010;
     c.y+=c.vy; c.x+=c.drift;
-    if(c.y<c.r+20||c.y>H-c.r-20) c.vy*=-1;
+    if(c.y<cr+20||c.y>H-cr-20) c.vy*=-1;
     if(c.x<40||c.x>CHANNEL_END-40) c.drift*=-1;
+    // arrasto suave nas derivas (mudança lenta de trajetória)
+    c.drift*=0.998; c.vy*=0.998;
+
+    // Embarcações colidem com os contêineres e mudam sua trajetória lentamente
+    if(!c.hit){
+      for(const v of vessels){
+        if(Math.hypot(v.wx-c.x,v.y-c.y)<(v.len/2+cr)){
+          const ang=Math.atan2(c.y-v.y,c.x-v.wx);
+          c.drift+=Math.cos(ang)*0.05+v.vx*0.012;
+          c.vy   +=Math.sin(ang)*0.05;
+          c.drift=clamp(c.drift,-0.9,0.9); c.vy=clamp(c.vy,-0.7,0.7);
+        }
+      }
+    }
     if(c.hit) continue;
-    if(Math.hypot(tug.x-c.x,tug.y-c.y)<tug.len/2+c.r-2){
+
+    // Rebocador colide → avaria
+    if(Math.hypot(tug.x-c.x,tug.y-c.y)<tug.len/2+cr-2){
       c.hit=true;
       maintenance=Math.max(0,maintenance-0.22);
-      // empurra o rebocador (impacto)
       const ang=Math.atan2(tug.y-c.y,tug.x-c.x);
       tug.vx+=Math.cos(ang)*1.6; tug.vy+=Math.sin(ang)*1.6;
       spawnP(c.x,c.y,'#cc8844',14);
@@ -735,24 +759,40 @@ function lighten(hex,amt){
 function drawCrates(){
   for(const c of crates){
     if(c.hit) continue;
-    if(c.x<camX-80||c.x>camX+W+80) continue;
-    const bob=Math.sin(c.spin*2)*2;
+    if(c.x<camX-90||c.x>camX+W+90) continue;
+    const bob=Math.sin(c.spin*2)*1.8;
+    const w=c.w, h=c.hgt, hw=w/2, hh=h/2;
     ctx.save();
-    ctx.translate(c.x,c.y+bob); ctx.rotate(Math.sin(c.spin)*0.18);
+    ctx.translate(c.x,c.y+bob);
+    // alinha o contêiner ao sentido da deriva
+    ctx.rotate(Math.atan2(c.vy,c.drift||0.0001)*0.25 + Math.sin(c.spin)*0.06);
+
     // sombra na água
-    ctx.fillStyle='rgba(0,0,0,.28)'; ctx.fillRect(-c.r+3,-c.r+4,c.r*2,c.r*2);
-    // corpo da caixa
-    ctx.fillStyle=c.tone; ctx.fillRect(-c.r,-c.r,c.r*2,c.r*2);
-    ctx.strokeStyle=lighten(c.tone,-40); ctx.lineWidth=2; ctx.strokeRect(-c.r,-c.r,c.r*2,c.r*2);
-    // ripas
-    ctx.strokeStyle=lighten(c.tone,30); ctx.lineWidth=1.5;
-    ctx.beginPath(); ctx.moveTo(-c.r,0); ctx.lineTo(c.r,0); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(0,-c.r); ctx.lineTo(0,c.r); ctx.stroke();
-    ctx.strokeStyle=lighten(c.tone,-25); ctx.lineWidth=1;
-    ctx.beginPath(); ctx.moveTo(-c.r,-c.r); ctx.lineTo(c.r,c.r); ctx.stroke();
-    // marca de aviso
-    ctx.fillStyle='rgba(255,200,40,.85)'; ctx.font=`bold ${Math.floor(c.r)}px sans-serif`;
-    ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('⚠',0,1);
+    ctx.fillStyle='rgba(0,0,0,.30)';
+    ctx.fillRect(-hw+3,-hh+4,w,h);
+
+    // corpo do contêiner (gradiente metálico)
+    const g=ctx.createLinearGradient(0,-hh,0,hh);
+    g.addColorStop(0,lighten(c.color,42));
+    g.addColorStop(0.5,c.color);
+    g.addColorStop(1,lighten(c.color,-34));
+    ctx.fillStyle=g; ctx.fillRect(-hw,-hh,w,h);
+
+    // nervuras verticais (corrugação típica de contêiner)
+    ctx.strokeStyle=lighten(c.color,-22); ctx.lineWidth=1;
+    for(let x=-hw+3;x<hw;x+=4){ ctx.beginPath(); ctx.moveTo(x,-hh+1.5); ctx.lineTo(x,hh-1.5); ctx.stroke(); }
+
+    // cantoneiras (corner castings) e moldura
+    ctx.strokeStyle=lighten(c.color,-48); ctx.lineWidth=2; ctx.strokeRect(-hw,-hh,w,h);
+    ctx.fillStyle=lighten(c.color,-40);
+    [[-hw,-hh],[hw-4,-hh],[-hw,hh-4],[hw-4,hh-4]].forEach(([px,py])=>ctx.fillRect(px,py,4,4));
+
+    // brilho superior
+    ctx.fillStyle='rgba(255,255,255,.14)'; ctx.fillRect(-hw+1,-hh+1,w-2,h*0.30);
+
+    // identificação tipo "ABCU"
+    ctx.fillStyle='rgba(255,255,255,.55)'; ctx.font=`bold ${Math.floor(h*0.42)}px monospace`;
+    ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('▢▢▢',0,0);
     ctx.restore();
   }
 }
@@ -980,10 +1020,13 @@ function drawHUD(){
   drawBar(lx,barY,barW,barH,maintenance,'#44ee88','🔧 MANUT.');
   drawBar(lx+barW+48,barY,barW,barH,fuel,'#ff9933','⛽ COMB.');
 
-  // Score
-  ctx.fillStyle='#7df4ff'; ctx.font='bold 14px monospace';
+  // Score + cronômetro
   ctx.textAlign='right'; ctx.textBaseline='top';
+  ctx.fillStyle='#7df4ff'; ctx.font='bold 14px monospace';
   ctx.fillText(`⭐ ${score}`,W-12,14);
+  const mm=Math.floor(gameTime/60), ss=Math.floor(gameTime%60);
+  ctx.fillStyle='#ffe066'; ctx.font='bold 13px monospace';
+  ctx.fillText(`⏱ ${mm}:${ss<10?'0':''}${ss}`,W-12,32);
 
   // Fuel warning
   if(fuel<0.15){
@@ -1138,10 +1181,12 @@ function drawMsg(){
 }
 
 // ─── Overlays ─────────────────────────────────────────────────────────────────
+function fmtTime(t){const m=Math.floor(t/60),s=Math.floor(t%60);return `${m}:${s<10?'0':''}${s}`;}
 function showGameOver(){
   const ov=document.getElementById('overlay');
   ov.innerHTML=`<h1 style="color:#ff4444">💀 GAME OVER</h1>
-    <p>Vidas esgotadas!<br>Pontuação: <strong style="color:#ffd700;font-size:22px">${score}</strong></p>
+    <p>Vidas esgotadas!<br>Pontuação: <strong style="color:#ffd700;font-size:22px">${score}</strong><br>
+    ⏱ Tempo: <strong style="color:#ffe066">${fmtTime(gameTime)}</strong></p>
     <button id="btn-restart">TENTAR NOVAMENTE</button>`;
   ov.style.display='flex';
   document.getElementById('btn-restart').addEventListener('click',startGame);
@@ -1150,7 +1195,8 @@ function showVictory(){
   const ov=document.getElementById('overlay');
   ov.innerHTML=`<h1>🏆 VITÓRIA!</h1>
     <p>Todos os 3 navios atracados!<br>
-    Pontuação final: <strong style="color:#ffd700;font-size:24px">${score}</strong></p>
+    Pontuação final: <strong style="color:#ffd700;font-size:24px">${score}</strong><br>
+    ⏱ Tempo total: <strong style="color:#ffe066">${fmtTime(gameTime)}</strong></p>
     <button id="btn-restart">JOGAR NOVAMENTE</button>`;
   ov.style.display='flex';
   document.getElementById('btn-restart').addEventListener('click',startGame);
@@ -1173,7 +1219,7 @@ function loop(ts){
   requestAnimationFrame(loop);
 }
 function startGame(){
-  gameState='playing'; lives=MAX_LIVES; fuel=1; maintenance=1; score=0; mission=0;
+  gameState='playing'; lives=MAX_LIVES; fuel=1; maintenance=1; score=0; mission=0; gameTime=0;
   document.getElementById('overlay').style.display='none';
   buildWorld();
 }
