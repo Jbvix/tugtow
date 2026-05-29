@@ -658,16 +658,19 @@ function updateCollectibles(){
           showMsg('⛽ Tanque cheio!');
         }
       }
-    } else if(c.type==='coin'&&dist<22){
-      c.collected=true;
-      score+=25;
-      spawnP(c.x,c.y,'#ffd700',10);
-      sfx('collect');
+    } else if(c.type==='coin'){
+      if(dist<24){
+        c.collected=true;
+        score+=25;
+        spawnP(c.x,c.y,'#ffd700',10);
+        sfx('collect');
+        showMsg(`🪙 +25 · ${score} pts`);
+      }
     } else if(dist<28){
       c.collected=true;
       spawnP(c.x,c.y,{wrench:'#88ff44',key:'#ffdd00'}[c.type],14);
       if(c.type==='wrench'){maintenance=Math.min(1,maintenance+0.55);showMsg('🔧 Manutenção +55%');sfx('collect');}
-      else{bridge.locked=false;showMsg('🗝️ Ponte desbloqueada!');sfx('key');}
+      else if(c.type==='key'){bridge.locked=false;showMsg('🗝️ Ponte desbloqueada!');sfx('key');}
     }
   }
 }
