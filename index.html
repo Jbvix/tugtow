@@ -1,0 +1,1034 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>PAW — Desafio de Reboque</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; touch-action: none; }
+  body {
+    background: #001a2e;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100dvh;
+    overflow: hidden;
+    font-family: 'Segoe UI', sans-serif;
+  }
+  #ui {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 14px;
+    background: linear-gradient(180deg,rgba(0,0,0,.55) 0%,transparent 100%);
+    z-index: 10;
+    pointer-events: none;
+  }
+  #ui .pill {
+    background: rgba(0,30,60,.7);
+    border: 1px solid rgba(0,180,255,.35);
+    border-radius: 20px;
+    padding: 4px 12px;
+    color: #7df4ff;
+    font-size: 13px;
+    font-weight: 600;
+    pointer-events: none;
+  }
+  canvas { display: block; touch-action: none; }
+  #overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,10,25,.88);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    z-index: 20; gap: 18px;
+  }
+  #overlay h1 {
+    color: #7df4ff;
+    font-size: clamp(26px,6vw,42px);
+    text-shadow: 0 0 20px #00cfff;
+    letter-spacing: 2px;
+  }
+  #overlay p {
+    color: #aaddee;
+    font-size: clamp(12px,3vw,15px);
+    text-align: center;
+    max-width: 340px;
+    line-height: 1.6;
+  }
+  #overlay button {
+    margin-top: 10px;
+    padding: 14px 44px;
+    font-size: 17px;
+    font-weight: 700;
+    background: linear-gradient(135deg,#0077aa,#00cfff);
+    color: #fff;
+    border: none; border-radius: 30px;
+    cursor: pointer;
+    box-shadow: 0 0 24px #00cfff88;
+    letter-spacing: 1px;
+  }
+  #overlay button:active { transform: scale(.97); }
+  #joystick-zone {
+    position: fixed; bottom: 20px; left: 20px;
+    width: 110px; height: 110px;
+    z-index: 10; pointer-events: none;
+  }
+  #hint {
+    position: fixed; bottom: 14px; right: 14px;
+    color: rgba(120,220,255,.65);
+    font-size: 11px;
+    z-index: 10;
+    text-align: right;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+
+<div id="ui">
+  <div class="pill" id="ui-mission">Missão 1 / 3</div>
+  <div class="pill" id="ui-phase">Fase: Aproximar</div>
+  <div class="pill" id="ui-score">Pontos: 0</div>
+</div>
+
+<canvas id="c"></canvas>
+
+<div id="joystick-zone">
+  <canvas id="jc" width="110" height="110"></canvas>
+</div>
+<div id="hint">Toque para mover<br>Aproxime e conecte o navio</div>
+
+<div id="overlay" id="overlay">
+  <h1>⚓ PAW</h1>
+  <h2 style="color:#00cfff;font-size:18px">Desafio de Reboque</h2>
+  <p>
+    Pilote o rebocador, conecte o cabo na proa do navio,<br>
+    conduza pelo corredor de boias até o cais<br>
+    e atraque o navio sem bater nas boias!
+  </p>
+  <p style="font-size:11px;opacity:.7">
+    📱 Joystick virtual (esquerda) · Botão CONECTAR (direita)<br>
+    🖥️ WASD / Setas · Espaço = conectar/desconectar
+  </p>
+  <button id="btn-start">ZARPAR ⚓</button>
+</div>
+
+<script>
+'use strict';
+
+// ─── Canvas setup ───────────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+const jCanvas = document.getElementById('jc');
+const jCtx   = jCanvas.getContext('2d');
+
+function resize() {
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', () => { resize(); buildLevel(); });
+
+// ─── Constants ──────────────────────────────────────────────────────────────
+const TUG_SPEED     = 3.2;
+const TUG_TURN      = 0.045;
+const CABLE_LEN     = 72;
+const CABLE_STIFF   = 0.06;
+const SHIP_DRAG     = 0.97;
+const SHIP_ANGDRAG  = 0.94;
+const CONNECT_DIST  = 45;
+const DOCK_DIST     = 38;
+const PUSH_FORCE    = 0.18;
+const BUOY_R        = 10;
+const PENALTY       = 80;
+
+// ─── State ──────────────────────────────────────────────────────────────────
+let W, H;
+let tug, ship, buoys, berths, targetBerth;
+let phase; // 'approach'|'towing'|'pushing'|'docked'
+let score = 0;
+let mission = 0; // 0-based
+let totalMissions = 3;
+let buoyHits = 0;
+let levelTime = 0;
+let particles = [];
+let waveOffset = 0;
+
+// ─── Input ──────────────────────────────────────────────────────────────────
+const keys = {};
+window.addEventListener('keydown', e => {
+  keys[e.key] = true;
+  if (e.key === ' ') handleConnectAction();
+});
+window.addEventListener('keyup',  e => { keys[e.key] = false; });
+
+// Virtual joystick
+let joyActive = false, joyStartX = 0, joyStartY = 0, joyDX = 0, joyDY = 0;
+const JOY_ZONE = { x: 0, y: 0, w: 130, h: 130 }; // screen region
+
+canvas.addEventListener('touchstart', onTouchStart, {passive:false});
+canvas.addEventListener('touchmove',  onTouchMove,  {passive:false});
+canvas.addEventListener('touchend',   onTouchEnd,   {passive:false});
+canvas.addEventListener('mousedown',  onMouseDown);
+canvas.addEventListener('mousemove',  onMouseMove);
+canvas.addEventListener('mouseup',    onMouseUp);
+
+let mouseDown = false, mouseX = 0, mouseY = 0;
+let connectBtnRect = null; // set during draw
+
+function inJoyZone(x, y) {
+  return x < 160 && y > canvas.height - 160;
+}
+function inConnectZone(x, y) {
+  if (!connectBtnRect) return false;
+  const r = connectBtnRect;
+  return x >= r.x && x <= r.x+r.w && y >= r.y && y <= r.y+r.h;
+}
+
+function onTouchStart(e) {
+  e.preventDefault();
+  for (const t of e.changedTouches) {
+    const x = t.clientX, y = t.clientY;
+    if (inConnectZone(x, y)) { handleConnectAction(); continue; }
+    if (inJoyZone(x, y) && !joyActive) {
+      joyActive = true; joyStartX = x; joyStartY = y;
+      joyDX = 0; joyDY = 0;
+    }
+  }
+}
+function onTouchMove(e) {
+  e.preventDefault();
+  for (const t of e.changedTouches) {
+    const x = t.clientX, y = t.clientY;
+    if (joyActive) {
+      joyDX = x - joyStartX;
+      joyDY = y - joyStartY;
+      const len = Math.hypot(joyDX, joyDY);
+      const maxR = 38;
+      if (len > maxR) { joyDX = joyDX/len*maxR; joyDY = joyDY/len*maxR; }
+    }
+  }
+}
+function onTouchEnd(e) {
+  e.preventDefault();
+  joyActive = false; joyDX = 0; joyDY = 0;
+}
+function onMouseDown(e) { mouseDown = true; mouseX = e.clientX; mouseY = e.clientY;
+  if (inConnectZone(e.clientX, e.clientY)) handleConnectAction();
+}
+function onMouseMove(e) { mouseX = e.clientX; mouseY = e.clientY; }
+function onMouseUp()    { mouseDown = false; }
+
+// ─── Level builder ──────────────────────────────────────────────────────────
+function buildLevel() {
+  W = canvas.width; H = canvas.height;
+
+  // Port on right side
+  const portX = W * 0.72;
+  const berthW = 90, berthH = 56;
+  const berthSpacing = berthH + 20;
+  const totalBerthHeight = 3 * berthH + 2 * 20;
+  const berthStartY = H/2 - totalBerthHeight/2;
+
+  berths = [];
+  for (let i = 0; i < 3; i++) {
+    berths.push({
+      x: portX,
+      y: berthStartY + i * berthSpacing,
+      w: berthW,
+      h: berthH,
+      docked: false,
+      id: i,
+    });
+  }
+
+  // Target berth for this mission (cycle)
+  targetBerth = berths[mission % 3];
+
+  // Buoy corridor — channel leading from open water to port entrance
+  const channelCenterY = targetBerth.y + berthH/2;
+  const corridorStartX = W * 0.22;
+  const corridorEndX   = portX - 10;
+  const corridorHalfW  = 44;
+  const numBuoys       = 7;
+  buoys = [];
+  for (let i = 0; i <= numBuoys; i++) {
+    const bx = corridorStartX + (corridorEndX - corridorStartX) * (i / numBuoys);
+    buoys.push({ x: bx, y: channelCenterY - corridorHalfW, r: BUOY_R, hit: false, wobble: Math.random()*Math.PI*2 });
+    buoys.push({ x: bx, y: channelCenterY + corridorHalfW, r: BUOY_R, hit: false, wobble: Math.random()*Math.PI*2 });
+  }
+
+  // Ship starting position (left area)
+  const sx = W * 0.1, sy = H * 0.35;
+  ship = {
+    x: sx, y: sy,
+    vx: 0, vy: 0,
+    angle: 0,
+    angVel: 0,
+    len: 80, wid: 22,
+    connected: false,
+    docked: false,
+  };
+
+  // Tug starting position nearby
+  tug = {
+    x: sx - 90, y: sy + 40,
+    vx: 0, vy: 0,
+    angle: 0,
+    len: 36, wid: 16,
+  };
+
+  phase = 'approach';
+  buoyHits = 0;
+  levelTime = 0;
+  particles = [];
+  updateUI();
+}
+
+// ─── Ship bow position ───────────────────────────────────────────────────────
+function shipBow() {
+  return {
+    x: ship.x + Math.cos(ship.angle) * ship.len/2,
+    y: ship.y + Math.sin(ship.angle) * ship.len/2,
+  };
+}
+function shipStern() {
+  return {
+    x: ship.x - Math.cos(ship.angle) * ship.len/2,
+    y: ship.y - Math.sin(ship.angle) * ship.len/2,
+  };
+}
+function tugFront() {
+  return {
+    x: tug.x + Math.cos(tug.angle) * tug.len/2,
+    y: tug.y + Math.sin(tug.angle) * tug.len/2,
+  };
+}
+
+// ─── Connect/Disconnect action ───────────────────────────────────────────────
+function handleConnectAction() {
+  if (phase === 'approach') {
+    // Try to connect
+    const bow = shipBow();
+    const tf  = tugFront();
+    const dist = Math.hypot(tf.x - bow.x, tf.y - bow.y);
+    if (dist < CONNECT_DIST) {
+      ship.connected = true;
+      phase = 'towing';
+      spawnParticles(bow.x, bow.y, '#00ffcc', 12);
+      updateUI();
+    }
+  } else if (phase === 'towing') {
+    // Disconnect near berth
+    const tb = targetBerth;
+    const berthCenter = { x: tb.x + tb.w/2, y: tb.y + tb.h/2 };
+    const dist = Math.hypot(ship.x - berthCenter.x, ship.y - berthCenter.y);
+    if (dist < 120) {
+      ship.connected = false;
+      phase = 'pushing';
+      updateUI();
+    }
+  }
+}
+
+// ─── Physics update ──────────────────────────────────────────────────────────
+function update(dt) {
+  waveOffset += 0.012;
+  levelTime += dt;
+
+  // ── Tug input ──
+  let thrust = 0, turn = 0;
+
+  if (keys['ArrowUp']    || keys['w'] || keys['W']) thrust =  1;
+  if (keys['ArrowDown']  || keys['s'] || keys['S']) thrust = -0.4;
+  if (keys['ArrowLeft']  || keys['a'] || keys['A']) turn   = -1;
+  if (keys['ArrowRight'] || keys['d'] || keys['D']) turn   =  1;
+
+  // Joystick
+  if (joyActive || (Math.hypot(joyDX, joyDY) > 4)) {
+    const len = Math.hypot(joyDX, joyDY);
+    if (len > 4) {
+      const jAngle = Math.atan2(joyDY, joyDX);
+      const diff = angleDiff(jAngle, tug.angle);
+      turn   = Math.sign(diff) * Math.min(Math.abs(diff) / 0.5, 1);
+      thrust = Math.cos(diff) * (len / 38);
+    }
+  }
+
+  tug.angle += turn * TUG_TURN;
+  const spd = TUG_SPEED * thrust;
+  tug.vx += Math.cos(tug.angle) * spd * 0.12;
+  tug.vy += Math.sin(tug.angle) * spd * 0.12;
+  tug.vx *= 0.88; tug.vy *= 0.88;
+  tug.x += tug.vx; tug.y += tug.vy;
+
+  // Keep tug in bounds
+  tug.x = clamp(tug.x, 20, W - 20);
+  tug.y = clamp(tug.y, 20, H - 20);
+
+  // ── Cable / towing ──
+  if (phase === 'towing' && ship.connected) {
+    const bow = shipBow();
+    const tf  = tugFront();
+    const dx  = tf.x - bow.x;
+    const dy  = tf.y - bow.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist > CABLE_LEN) {
+      const over   = dist - CABLE_LEN;
+      const nx     = dx / dist;
+      const ny     = dy / dist;
+      const force  = over * CABLE_STIFF;
+      // Apply force to ship bow — also creates torque
+      ship.vx += nx * force;
+      ship.vy += ny * force;
+      // Torque: cross product of bow-relative position and force
+      const bowRel = { x: bow.x - ship.x, y: bow.y - ship.y };
+      const torque = bowRel.x * ny * force - bowRel.y * nx * force;
+      ship.angVel += torque * 0.004;
+    }
+    ship.vx *= SHIP_DRAG; ship.vy *= SHIP_DRAG;
+    ship.angVel *= SHIP_ANGDRAG;
+    ship.x += ship.vx; ship.y += ship.vy;
+    ship.angle += ship.angVel;
+  }
+
+  // ── Pushing ──
+  if (phase === 'pushing') {
+    const tf    = tugFront();
+    const stern = shipStern();
+    const dx    = tf.x - stern.x;
+    const dy    = tf.y - stern.y;
+    const dist  = Math.hypot(dx, dy);
+    if (dist < 30) {
+      // Push force along tug heading
+      ship.vx += Math.cos(tug.angle) * PUSH_FORCE;
+      ship.vy += Math.sin(tug.angle) * PUSH_FORCE;
+    }
+    ship.vx *= SHIP_DRAG; ship.vy *= SHIP_DRAG;
+    ship.angVel *= SHIP_ANGDRAG;
+    ship.x += ship.vx; ship.y += ship.vy;
+    ship.angle += ship.angVel;
+
+    // Check docking
+    const tb = targetBerth;
+    const berthCX = tb.x + tb.w/2;
+    const berthCY = tb.y + tb.h/2;
+    const dist2 = Math.hypot(ship.x - berthCX, ship.y - berthCY);
+    if (dist2 < DOCK_DIST) {
+      dockedSuccess();
+    }
+  }
+
+  // ── Buoy collisions (towing / pushing) ──
+  if (phase === 'towing' || phase === 'pushing') {
+    checkBuoyCollisions();
+  }
+
+  // ── Particles ──
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx; p.y += p.vy;
+    p.life -= 0.025;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+}
+
+function checkBuoyCollisions() {
+  // Check ship hull against buoys
+  const corners = getShipCorners();
+  for (const b of buoys) {
+    if (b.hit) continue;
+    // Circle-vs-polygon: simple dist to segment check
+    const hit = pointNearPoly(b.x, b.y, corners, b.r + 4);
+    if (hit) {
+      b.hit = true;
+      buoyHits++;
+      score = Math.max(0, score - PENALTY);
+      spawnParticles(b.x, b.y, '#ff4444', 8);
+      updateUI();
+    }
+  }
+}
+
+function getShipCorners() {
+  const ca = Math.cos(ship.angle), sa = Math.sin(ship.angle);
+  const hw = ship.wid/2, hl = ship.len/2;
+  return [
+    { x: ship.x + ca*hl - sa*hw, y: ship.y + sa*hl + ca*hw },
+    { x: ship.x + ca*hl + sa*hw, y: ship.y + sa*hl - ca*hw },
+    { x: ship.x - ca*hl + sa*hw, y: ship.y - sa*hl - ca*hw },
+    { x: ship.x - ca*hl - sa*hw, y: ship.y - sa*hl + ca*hw },
+  ];
+}
+
+function pointNearPoly(px, py, poly, radius) {
+  const n = poly.length;
+  for (let i = 0; i < n; i++) {
+    const a = poly[i], b = poly[(i+1)%n];
+    const d = distToSegment(px, py, a.x, a.y, b.x, b.y);
+    if (d < radius) return true;
+  }
+  // Also check if point inside polygon
+  let inside = false;
+  for (let i = 0, j = n-1; i < n; j = i++) {
+    if ((poly[i].y > py) !== (poly[j].y > py) &&
+        px < (poly[j].x - poly[i].x) * (py - poly[i].y) / (poly[j].y - poly[i].y) + poly[i].x) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+function distToSegment(px, py, ax, ay, bx, by) {
+  const dx = bx-ax, dy = by-ay;
+  const lenSq = dx*dx + dy*dy;
+  if (lenSq === 0) return Math.hypot(px-ax, py-ay);
+  const t = clamp(((px-ax)*dx + (py-ay)*dy) / lenSq, 0, 1);
+  return Math.hypot(px - (ax+t*dx), py - (ay+t*dy));
+}
+
+function dockedSuccess() {
+  if (phase === 'docked') return;
+  phase = 'docked';
+  targetBerth.docked = true;
+
+  const basePoints = 500;
+  const hitPenalty = buoyHits * PENALTY;
+  const timeBonus  = Math.max(0, Math.floor(300 - levelTime/1000 * 5));
+  score += basePoints + timeBonus - hitPenalty;
+  score = Math.max(score, 0);
+
+  spawnParticles(ship.x, ship.y, '#ffd700', 30);
+  spawnParticles(ship.x, ship.y, '#00ffcc', 20);
+
+  updateUI();
+
+  if (mission + 1 >= totalMissions) {
+    setTimeout(showVictory, 1200);
+  } else {
+    setTimeout(nextMission, 1800);
+  }
+}
+
+function nextMission() {
+  mission++;
+  buildLevel();
+}
+
+// ─── Render ─────────────────────────────────────────────────────────────────
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+
+  drawWater();
+  drawPort();
+  drawBerths();
+  drawBuoys();
+  if (phase === 'towing') drawCable();
+  drawShip();
+  drawTug();
+  drawParticles();
+  drawConnectButton();
+  drawJoystick();
+  drawPhaseHint();
+}
+
+function drawWater() {
+  // Ocean gradient
+  const grad = ctx.createLinearGradient(0, 0, W, H);
+  grad.addColorStop(0, '#003355');
+  grad.addColorStop(1, '#001a2e');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Animated wave lines
+  ctx.strokeStyle = 'rgba(0,120,200,0.18)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i < 18; i++) {
+    const yBase = (H / 18) * i + ((waveOffset * 18 + i * 37) % H);
+    ctx.beginPath();
+    for (let x = 0; x < W; x += 6) {
+      const y = yBase + Math.sin(x * 0.025 + waveOffset + i) * 5;
+      x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+}
+
+function drawPort() {
+  const portX = W * 0.72;
+  // Quay wall
+  ctx.fillStyle = '#5a4a38';
+  ctx.fillRect(portX + 85, 0, W - portX - 85, H);
+  // Concrete edge
+  ctx.fillStyle = '#7a6a58';
+  ctx.fillRect(portX + 82, 0, 8, H);
+  // Pier markings
+  ctx.strokeStyle = '#8a7a68';
+  ctx.lineWidth = 2;
+  for (let y = 0; y < H; y += 30) {
+    ctx.beginPath();
+    ctx.moveTo(portX + 82, y);
+    ctx.lineTo(portX + W, y);
+    ctx.stroke();
+  }
+  // Water-side shading
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  ctx.fillRect(portX, 0, 85, H);
+}
+
+function drawBerths() {
+  for (const b of berths) {
+    const isTarget = (b === targetBerth);
+    const isDocked  = b.docked;
+
+    // Berth slot
+    ctx.save();
+    if (isDocked) {
+      ctx.fillStyle = 'rgba(0,255,100,0.18)';
+      ctx.strokeStyle = '#00ff88';
+    } else if (isTarget && (phase === 'approach' || phase === 'towing' || phase === 'pushing')) {
+      const pulse = 0.5 + 0.5 * Math.sin(Date.now() * 0.004);
+      ctx.fillStyle = `rgba(0,200,255,${0.08 + pulse * 0.12})`;
+      ctx.strokeStyle = `rgba(0,200,255,${0.5 + pulse * 0.5})`;
+    } else {
+      ctx.fillStyle = 'rgba(255,255,255,0.05)';
+      ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+    }
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.rect(b.x, b.y, b.w, b.h);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+
+    // Berth number
+    ctx.fillStyle = isDocked ? '#00ff88' : isTarget ? '#7df4ff' : 'rgba(255,255,255,0.3)';
+    ctx.font = `bold ${isTarget ? 14 : 12}px monospace`;
+    ctx.textAlign = 'center';
+    ctx.fillText(`CAIS ${b.id + 1}`, b.x + b.w/2, b.y + b.h/2 + 5);
+
+    // Mooring posts
+    for (const py of [b.y + 8, b.y + b.h - 8]) {
+      ctx.beginPath();
+      ctx.arc(b.x + 4, py, 4, 0, Math.PI*2);
+      ctx.fillStyle = '#8a7a68';
+      ctx.fill();
+    }
+  }
+}
+
+function drawBuoys() {
+  for (const b of buoys) {
+    b.wobble += 0.04;
+    const wobX = Math.sin(b.wobble) * 2.2;
+    const wobY = Math.cos(b.wobble * 0.7) * 1.4;
+    const x = b.x + wobX, y = b.y + wobY;
+
+    // Shadow
+    ctx.beginPath();
+    ctx.arc(x + 2, y + 2, b.r, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.fill();
+
+    // Body
+    const grad = ctx.createRadialGradient(x-2, y-2, 1, x, y, b.r);
+    if (b.hit) {
+      grad.addColorStop(0, '#ff8888');
+      grad.addColorStop(1, '#880000');
+    } else {
+      grad.addColorStop(0, '#ffcc44');
+      grad.addColorStop(1, '#cc6600');
+    }
+    ctx.beginPath();
+    ctx.arc(x, y, b.r, 0, Math.PI*2);
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    // Stripe
+    ctx.save();
+    ctx.clip();
+    ctx.strokeStyle = b.hit ? '#ff0000' : '#ff9900';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(x - b.r, y); ctx.lineTo(x + b.r, y);
+    ctx.stroke();
+    ctx.restore();
+
+    // Top light
+    ctx.beginPath();
+    ctx.arc(x, y - b.r * 0.6, b.r * 0.2, 0, Math.PI*2);
+    ctx.fillStyle = b.hit ? '#ff0000' : '#ffffff';
+    ctx.fill();
+
+    // Chain to bottom
+    ctx.strokeStyle = 'rgba(150,120,80,0.5)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([2,3]);
+    ctx.beginPath();
+    ctx.moveTo(x, y + b.r);
+    ctx.lineTo(x + Math.sin(b.wobble * 0.5) * 3, y + b.r + 14);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+}
+
+function drawCable() {
+  const bow = shipBow();
+  const tf  = tugFront();
+  const dist = Math.hypot(tf.x - bow.x, tf.y - bow.y);
+  const taut = dist >= CABLE_LEN * 0.9;
+
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineWidth = taut ? 2.5 : 1.5;
+  ctx.strokeStyle = taut ? '#ffcc00' : '#aa8844';
+  ctx.setLineDash(taut ? [] : [6, 4]);
+
+  if (taut) {
+    ctx.beginPath();
+    ctx.moveTo(bow.x, bow.y);
+    ctx.lineTo(tf.x, tf.y);
+    ctx.stroke();
+  } else {
+    // Catenary sag
+    const midX = (bow.x + tf.x) / 2;
+    const midY = (bow.y + tf.y) / 2 + 12;
+    ctx.beginPath();
+    ctx.moveTo(bow.x, bow.y);
+    ctx.quadraticCurveTo(midX, midY, tf.x, tf.y);
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  ctx.restore();
+
+  // Connection points
+  ctx.beginPath();
+  ctx.arc(bow.x, bow.y, 5, 0, Math.PI*2);
+  ctx.fillStyle = '#ffcc00';
+  ctx.fill();
+}
+
+function drawShip() {
+  ctx.save();
+  ctx.translate(ship.x, ship.y);
+  ctx.rotate(ship.angle);
+
+  const l = ship.len/2, w = ship.wid/2;
+
+  // Hull shadow
+  ctx.shadowColor = 'rgba(0,0,0,0.4)';
+  ctx.shadowBlur  = 8;
+  ctx.shadowOffsetX = 2; ctx.shadowOffsetY = 3;
+
+  // Hull gradient
+  const grad = ctx.createLinearGradient(-l, -w, -l, w);
+  grad.addColorStop(0, '#2a5580');
+  grad.addColorStop(0.5, '#1a3a5c');
+  grad.addColorStop(1, '#0f2233');
+  ctx.fillStyle = grad;
+
+  // Ship shape (pointed bow)
+  ctx.beginPath();
+  ctx.moveTo(l, 0);                   // bow tip
+  ctx.lineTo(l - 14, -w);
+  ctx.lineTo(-l + 8, -w);
+  ctx.lineTo(-l, -w * 0.6);
+  ctx.lineTo(-l, w * 0.6);
+  ctx.lineTo(-l + 8, w);
+  ctx.lineTo(l - 14, w);
+  ctx.closePath();
+  ctx.fill();
+  ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
+
+  // Deck line
+  ctx.strokeStyle = '#3a6a9a';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(l - 16, 0); ctx.lineTo(-l + 10, 0);
+  ctx.stroke();
+
+  // Superstructure
+  ctx.fillStyle = '#d8c88e';
+  ctx.fillRect(-l * 0.3, -w * 0.55, l * 0.55, w * 1.1);
+  ctx.fillStyle = '#e8d89e';
+  ctx.fillRect(-l * 0.1, -w * 0.8, l * 0.25, w * 0.45);
+
+  // Windows
+  ctx.fillStyle = '#aaddff';
+  for (let i = 0; i < 3; i++) {
+    ctx.fillRect(-l*0.05 + i*6 - 6, -w*0.65, 4, 3);
+  }
+
+  // Bow marker (where cable attaches)
+  ctx.beginPath();
+  ctx.arc(l - 5, 0, 4, 0, Math.PI*2);
+  ctx.fillStyle = phase === 'approach' ? '#00ffcc' : '#ffcc00';
+  ctx.fill();
+
+  // Waterline reflection
+  ctx.fillStyle = 'rgba(0,150,255,0.15)';
+  ctx.beginPath();
+  ctx.ellipse(0, w + 3, l * 0.85, 5, 0, 0, Math.PI*2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+function drawTug() {
+  ctx.save();
+  ctx.translate(tug.x, tug.y);
+  ctx.rotate(tug.angle);
+
+  const l = tug.len/2, w = tug.wid/2;
+
+  ctx.shadowColor = 'rgba(0,0,0,0.4)';
+  ctx.shadowBlur  = 6;
+  ctx.shadowOffsetX = 1; ctx.shadowOffsetY = 2;
+
+  // Hull
+  const grad = ctx.createLinearGradient(-l, -w, -l, w);
+  grad.addColorStop(0, '#cc4400');
+  grad.addColorStop(0.5, '#992200');
+  grad.addColorStop(1, '#661100');
+  ctx.fillStyle = grad;
+
+  ctx.beginPath();
+  ctx.moveTo(l, 0);
+  ctx.lineTo(l - 8, -w);
+  ctx.lineTo(-l, -w * 0.8);
+  ctx.lineTo(-l - 2, 0);
+  ctx.lineTo(-l, w * 0.8);
+  ctx.lineTo(l - 8, w);
+  ctx.closePath();
+  ctx.fill();
+  ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
+
+  // Cabin
+  ctx.fillStyle = '#ffee88';
+  ctx.fillRect(-l * 0.2, -w * 0.75, l * 0.5, w * 1.5);
+  // Window
+  ctx.fillStyle = '#aaddff';
+  ctx.fillRect(-l * 0.05, -w * 0.65, l * 0.2, w * 0.5);
+
+  // Exhaust pipe
+  ctx.fillStyle = '#444';
+  ctx.fillRect(-l * 0.15, -w * 0.9, 5, 8);
+  // Smoke
+  if (Math.random() > 0.3) {
+    ctx.beginPath();
+    ctx.arc(-l * 0.12, -w * 1.1, 3, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(180,180,180,0.4)';
+    ctx.fill();
+  }
+
+  // Wake
+  ctx.restore();
+  ctx.save();
+  ctx.translate(tug.x, tug.y);
+  ctx.rotate(tug.angle + Math.PI);
+  const speed = Math.hypot(tug.vx, tug.vy);
+  if (speed > 0.3) {
+    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+    ctx.lineWidth = speed * 2;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(l, 0);
+    ctx.lineTo(l + speed * 15, 0);
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    ctx.globalAlpha = p.life;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r * p.life, 0, Math.PI*2);
+    ctx.fillStyle = p.color;
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function spawnParticles(x, y, color, n) {
+  for (let i = 0; i < n; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 1 + Math.random() * 3;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      r: 3 + Math.random() * 4,
+      color,
+      life: 1,
+    });
+  }
+}
+
+function drawConnectButton() {
+  const bw = 110, bh = 44;
+  const bx = W - bw - 14;
+  const by = H - bh - 14;
+  connectBtnRect = { x: bx, y: by, w: bw, h: bh };
+
+  let label = '';
+  let bgColor = 'rgba(0,80,120,0.75)';
+  let borderColor = 'rgba(0,180,255,0.6)';
+  let textColor = '#7df4ff';
+  let enabled = false;
+
+  if (phase === 'approach') {
+    const bow = shipBow();
+    const tf  = tugFront();
+    const dist = Math.hypot(tf.x - bow.x, tf.y - bow.y);
+    enabled = dist < CONNECT_DIST;
+    label   = enabled ? '🔗 CONECTAR' : '⚓ APROXIMAR';
+    if (enabled) { bgColor = 'rgba(0,150,80,0.85)'; borderColor = '#00ff88'; textColor = '#00ff88'; }
+  } else if (phase === 'towing') {
+    const tb = targetBerth;
+    const dist = Math.hypot(ship.x - (tb.x+tb.w/2), ship.y - (tb.y+tb.h/2));
+    enabled = dist < 120;
+    label   = enabled ? '✂️ SOLTAR' : '🚢 REBOCANDO';
+    if (enabled) { bgColor = 'rgba(150,80,0,0.85)'; borderColor = '#ffaa00'; textColor = '#ffcc44'; }
+  } else if (phase === 'pushing') {
+    label = '⬆️ EMPURRAR';
+    bgColor = 'rgba(80,0,120,0.75)';
+    borderColor = '#aa44ff';
+    textColor = '#dd88ff';
+  } else {
+    label = '✅ ATRACADO!';
+    bgColor = 'rgba(0,100,50,0.85)';
+    borderColor = '#00ff88';
+    textColor = '#00ff88';
+  }
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.roundRect(bx, by, bw, bh, 12);
+  ctx.fillStyle = bgColor;
+  ctx.fill();
+  ctx.strokeStyle = borderColor;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.fillStyle = textColor;
+  ctx.font = 'bold 12px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label, bx + bw/2, by + bh/2);
+  ctx.restore();
+}
+
+function drawJoystick() {
+  const cx = 55, cy = H - 55;
+  const outerR = 42, innerR = 18;
+  // Outer ring
+  ctx.beginPath();
+  ctx.arc(cx, cy, outerR, 0, Math.PI*2);
+  ctx.fillStyle = 'rgba(0,30,60,0.5)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,180,255,0.3)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Direction arrows
+  ctx.fillStyle = 'rgba(0,180,255,0.2)';
+  ctx.font = '14px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('▲', cx, cy - 26);
+  ctx.fillText('▼', cx, cy + 26);
+  ctx.fillText('◀', cx - 26, cy);
+  ctx.fillText('▶', cx + 26, cy);
+
+  // Knob
+  const kx = cx + (joyActive ? joyDX : 0);
+  const ky = cy + (joyActive ? joyDY : 0);
+  const kGrad = ctx.createRadialGradient(kx-3, ky-3, 1, kx, ky, innerR);
+  kGrad.addColorStop(0, '#4488cc');
+  kGrad.addColorStop(1, '#002244');
+  ctx.beginPath();
+  ctx.arc(kx, ky, innerR, 0, Math.PI*2);
+  ctx.fillStyle = kGrad;
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,180,255,0.5)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+}
+
+function drawPhaseHint() {
+  const hintEl = document.getElementById('hint');
+  if (phase === 'approach') {
+    const bow = shipBow();
+    const tf  = tugFront();
+    const dist = Math.hypot(tf.x - bow.x, tf.y - bow.y);
+    hintEl.textContent = dist < CONNECT_DIST
+      ? '✅ Pressione CONECTAR!'
+      : '🚤 Aproxime a proa do navio';
+  } else if (phase === 'towing') {
+    hintEl.textContent = '🚢 Reboque pelo corredor de boias';
+  } else if (phase === 'pushing') {
+    hintEl.textContent = '⬆️ Empurre o navio para o cais';
+  } else {
+    hintEl.textContent = mission + 1 < totalMissions ? '🎉 Atracado! Próxima missão...' : '🏆 Todas as missões concluídas!';
+  }
+}
+
+// ─── Overlay screens ─────────────────────────────────────────────────────────
+function showVictory() {
+  const ov = document.getElementById('overlay');
+  ov.innerHTML = `
+    <h1>🏆 VITÓRIA!</h1>
+    <p>Você atracou todos os ${totalMissions} navios!<br>
+    Pontuação final: <strong style="color:#ffd700;font-size:22px">${score}</strong></p>
+    <p style="font-size:12px;opacity:.7">Penalidades por boias: ${buoyHits * PENALTY} pts</p>
+    <button id="btn-restart">JOGAR NOVAMENTE</button>
+  `;
+  ov.style.display = 'flex';
+  document.getElementById('btn-restart').addEventListener('click', startGame);
+}
+
+function updateUI() {
+  document.getElementById('ui-mission').textContent = `Missão ${mission + 1} / ${totalMissions}`;
+  document.getElementById('ui-score').textContent   = `Pontos: ${score}`;
+  const phases = { approach:'Aproximar', towing:'Rebocando', pushing:'Empurrando', docked:'Atracado' };
+  document.getElementById('ui-phase').textContent   = `Fase: ${phases[phase] || phase}`;
+}
+
+// ─── Utils ───────────────────────────────────────────────────────────────────
+function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
+function angleDiff(a, b) {
+  let d = a - b;
+  while (d >  Math.PI) d -= Math.PI*2;
+  while (d < -Math.PI) d += Math.PI*2;
+  return d;
+}
+
+// ─── Game loop ───────────────────────────────────────────────────────────────
+let lastTime = 0;
+function loop(ts) {
+  const dt = ts - lastTime;
+  lastTime = ts;
+  update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+// ─── Start ───────────────────────────────────────────────────────────────────
+function startGame() {
+  score = 0;
+  mission = 0;
+  const ov = document.getElementById('overlay');
+  ov.style.display = 'none';
+  buildLevel();
+}
+
+document.getElementById('btn-start').addEventListener('click', startGame);
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
