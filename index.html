@@ -297,6 +297,8 @@ let buoyHits = 0, levelTime = 0;
 let particles = [], wakes = [];
 let waveOffset = 0;
 let connectBtnRect = null;
+// Level geometry globals (set by buildLevel)
+let portX, quayBackX, basinX, berthHG, berthSpacingG, berthStartYG;
 
 // ─── Input ────────────────────────────────────────────────────────────────────
 const keys = {};
@@ -339,38 +341,39 @@ function onTE(e) { e.preventDefault(); joyActive = false; joyDX = joyDY = 0; }
 function buildLevel() {
   W = canvas.width; H = canvas.height;
 
-  const portX    = W * 0.72;
-  const berthW   = 94, berthH = 58;
-  const spacing  = berthH + 22;
-  const startY   = H/2 - (3*berthH + 2*22)/2;
+  // Layout zones (left→right): open water | corridor | turning basin | berths | quay
+  portX      = W * 0.70;          // quay face / berth entrance
+  basinX     = W * 0.44;          // turning basin starts here, corridor ends here
+  const berthW   = Math.min(96, W * 0.24);
+  berthHG        = Math.min(64, H * 0.16);
+  berthSpacingG  = berthHG + 20;
+  berthStartYG   = H/2 - (3*berthHG + 2*20)/2;
+  quayBackX      = portX + berthW;
 
   berths = Array.from({length:3}, (_, i) => ({
-    x: portX, y: startY + i*spacing, w: berthW, h: berthH,
+    x: portX, y: berthStartYG + i*berthSpacingG, w: berthW, h: berthHG,
     docked: false, id: i,
   }));
 
-  // Keep previously docked berths
-  if (mission > 0) {
-    for (let i = 0; i < mission; i++) berths[i % 3].docked = true;
-  }
-
+  // Keep previously docked berths across missions
+  for (let i = 0; i < mission; i++) berths[i % 3].docked = true;
   targetBerth = berths[mission % 3];
   targetBerth.docked = false;
 
-  const channelY   = targetBerth.y + berthH/2;
-  const cStartX    = W * 0.22;
-  const cEndX      = portX - 14;
-  const halfW      = 46;
-  const numPairs   = 7;
+  // Buoy corridor — ends at basinX, centred on target berth
+  const channelY   = targetBerth.y + berthHG/2;
+  const cStartX    = W * 0.16;
+  const halfW      = 44;
+  const numPairs   = 6;
   buoys = [];
   for (let i = 0; i <= numPairs; i++) {
-    const bx = cStartX + (cEndX - cStartX) * (i / numPairs);
+    const bx = cStartX + (basinX - cStartX) * (i / numPairs);
     buoys.push({ x:bx, y:channelY - halfW, r:BUOY_R, hit:false, wobble:Math.random()*Math.PI*2 });
     buoys.push({ x:bx, y:channelY + halfW, r:BUOY_R, hit:false, wobble:Math.random()*Math.PI*2 });
   }
 
   const sx = W * 0.1, sy = H * 0.35;
-  ship = { x:sx, y:sy, vx:0, vy:0, angle:0, angVel:0, len:90, wid:25, connected:false };
+  ship = { x:sx, y:sy, vx:0, vy:0, angle:0, angVel:0, len:90, wid:24, connected:false };
   tug  = { x:sx - 100, y:sy + 50, vx:0, vy:0, angle:0, len:44, wid:20 };
 
   phase = 'approach'; buoyHits = 0; levelTime = 0; particles = []; wakes = [];
@@ -392,8 +395,8 @@ function handleAction() {
       updateUI();
     }
   } else if (phase === 'towing') {
-    const tb = targetBerth;
-    if (Math.hypot(ship.x-(tb.x+tb.w/2), ship.y-(tb.y+tb.h/2)) < 130) {
+    // Allow release once ship is in the turning basin (past basinX)
+    if (ship.x > basinX) {
       ship.connected = false; phase = 'pushing'; updateUI();
     }
   }
@@ -420,8 +423,8 @@ function update(dt) {
   tug.vx    += Math.cos(tug.angle) * TUG_SPEED * thrust * 0.12;
   tug.vy    += Math.sin(tug.angle) * TUG_SPEED * thrust * 0.12;
   tug.vx    *= 0.88; tug.vy *= 0.88;
-  tug.x = clamp(tug.x + tug.vx, 24, W - 24);
-  tug.y = clamp(tug.y + tug.vy, 24, H - 24);
+  tug.x += tug.vx; tug.y += tug.vy;
+  applyTugWalls();
 
   // Wake trail
   const spd = Math.hypot(tug.vx, tug.vy);
@@ -447,17 +450,25 @@ function update(dt) {
     ship.vx *= SHIP_DRAG; ship.vy *= SHIP_DRAG;
     ship.angVel *= SHIP_ANGDRAG;
     ship.x += ship.vx; ship.y += ship.vy; ship.angle += ship.angVel;
+    applyShipWalls();
   }
 
   if (phase === 'pushing') {
-    const tf = tugFront(), stern = shipStern();
-    if (Math.hypot(tf.x-stern.x, tf.y-stern.y) < 34) {
-      ship.vx += Math.cos(tug.angle)*PUSH_FORCE;
-      ship.vy += Math.sin(tug.angle)*PUSH_FORCE;
+    // Push from any direction: if tug hull is within contact range of ship hull, apply force
+    const closest = closestPointOnShip(tug.x, tug.y);
+    const cdist   = Math.hypot(tug.x - closest.x, tug.y - closest.y);
+    if (cdist < tug.len/2 + 8) {
+      ship.vx += Math.cos(tug.angle) * PUSH_FORCE;
+      ship.vy += Math.sin(tug.angle) * PUSH_FORCE;
+      // Torque: tug pushing at off-center point rotates ship
+      const rel = { x: closest.x - ship.x, y: closest.y - ship.y };
+      ship.angVel += (rel.x * Math.sin(tug.angle) * PUSH_FORCE
+                    - rel.y * Math.cos(tug.angle) * PUSH_FORCE) * 0.003;
     }
     ship.vx *= SHIP_DRAG; ship.vy *= SHIP_DRAG;
     ship.angVel *= SHIP_ANGDRAG;
     ship.x += ship.vx; ship.y += ship.vy; ship.angle += ship.angVel;
+    applyShipWalls();
     const tb = targetBerth;
     if (Math.hypot(ship.x-(tb.x+tb.w/2), ship.y-(tb.y+tb.h/2)) < DOCK_DIST) dockedSuccess();
   }
@@ -511,6 +522,88 @@ function distSeg(px,py,ax,ay,bx,by) {
   return Math.hypot(px-(ax+t*dx), py-(ay+t*dy));
 }
 
+// Returns pier zones: horizontal barriers between/around berths (x > portX area)
+function getPiers() {
+  const top    = 0;
+  const bottom = H;
+  const zones  = [];
+  if (berths[0].y > top + 4) zones.push([top, berths[0].y]);
+  for (let i = 0; i < berths.length - 1; i++)
+    zones.push([berths[i].y + berths[i].h, berths[i+1].y]);
+  if (berths[2].y + berths[2].h < bottom - 4) zones.push([berths[2].y + berths[2].h, bottom]);
+  return zones;
+}
+
+// Collision: tug vs quay wall and pier zones
+function applyTugWalls() {
+  const hw = tug.len / 2;
+  // Screen bounds
+  tug.x = clamp(tug.x, hw, W - hw);
+  tug.y = clamp(tug.y, tug.wid, H - tug.wid);
+
+  // Quay back wall
+  if (tug.x + hw > quayBackX) {
+    tug.x = quayBackX - hw; tug.vx = -Math.abs(tug.vx) * 0.4;
+  }
+  // Quay face: tug can only cross portX if it's aligned with a berth opening
+  if (tug.x + hw > portX) {
+    const inBerth = berths.some(b => tug.y >= b.y && tug.y <= b.y + b.h);
+    if (!inBerth) {
+      tug.x = portX - hw; tug.vx = -Math.abs(tug.vx) * 0.4;
+    } else {
+      // Inside berth area: block pier walls top/bottom
+      for (const [y1, y2] of getPiers()) {
+        if (tug.y < y2 && tug.y > y1) {
+          const mid = (y1 + y2) / 2;
+          tug.y = tug.y < mid ? y1 - tug.wid : y2 + tug.wid;
+          tug.vy *= -0.4;
+        }
+      }
+    }
+  }
+}
+
+// Collision: ship vs quay back wall and pier walls (between berths)
+function applyShipWalls() {
+  const hl = ship.len / 2, hw = ship.wid / 2;
+  // Screen bounds
+  ship.x = clamp(ship.x, hl, W - hl);
+  ship.y = clamp(ship.y, hw, H - hw);
+
+  // Quay back wall (hard stop)
+  if (ship.x + hl > quayBackX) {
+    ship.x = quayBackX - hl; ship.vx = -Math.abs(ship.vx) * 0.35; ship.angVel *= 0.5;
+  }
+  // Pier walls when ship crosses into port area
+  if (ship.x + hl > portX) {
+    for (const [y1, y2] of getPiers()) {
+      const pierH = y2 - y1;
+      if (pierH < 4) continue; // skip near-zero gaps
+      // Check if ship center is inside pier band
+      if (ship.y > y1 && ship.y < y2) {
+        const mid = (y1 + y2) / 2;
+        if (ship.y < mid) { ship.y = y1 - hw - 2; }
+        else              { ship.y = y2 + hw + 2; }
+        ship.vy *= -0.35; ship.angVel *= 0.5;
+      }
+    }
+  }
+}
+
+// Closest point on ship bounding box to a given world point
+function closestPointOnShip(px, py) {
+  const ca = Math.cos(ship.angle), sa = Math.sin(ship.angle);
+  // Transform px,py to ship local space
+  const dx = px - ship.x, dy = py - ship.y;
+  const lx = dx*ca + dy*sa;
+  const ly = -dx*sa + dy*ca;
+  // Clamp to box
+  const cx = clamp(lx, -ship.len/2, ship.len/2);
+  const cy = clamp(ly, -ship.wid/2, ship.wid/2);
+  // Back to world space
+  return { x: ship.x + cx*ca - cy*sa, y: ship.y + cx*sa + cy*ca };
+}
+
 function dockedSuccess() {
   if (phase === 'docked') return;
   phase = 'docked'; targetBerth.docked = true;
@@ -526,6 +619,7 @@ function dockedSuccess() {
 function draw() {
   ctx.clearRect(0, 0, W, H);
   drawWater();
+  drawBasin();
   drawPort();
   drawBerths();
   drawBuoys();
@@ -556,67 +650,108 @@ function drawWater() {
   }
 }
 
+// ── Turning Basin ──
+function drawBasin() {
+  if (!basinX) return;
+  // Slightly lighter water tint for maneuvering area
+  const bg = ctx.createLinearGradient(basinX, 0, portX, 0);
+  bg.addColorStop(0, 'transparent');
+  bg.addColorStop(0.5, 'rgba(0,100,180,0.10)');
+  bg.addColorStop(1, 'rgba(0,60,120,0.20)');
+  ctx.fillStyle = bg;
+  ctx.fillRect(basinX, 0, portX - basinX, H);
+
+  // Left boundary of basin (dashed line where corridor meets basin)
+  ctx.save();
+  ctx.strokeStyle = 'rgba(0,200,255,0.22)';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([8, 8]);
+  ctx.beginPath(); ctx.moveTo(basinX, 0); ctx.lineTo(basinX, H); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+
+  // "BACIA DE EVOLUÇÃO" label (vertical, subtle)
+  ctx.save();
+  ctx.globalAlpha = 0.30;
+  ctx.fillStyle = '#aaddff';
+  ctx.font = `bold ${Math.max(9, Math.floor((portX - basinX) * 0.09))}px monospace`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.translate((basinX + portX) / 2, H / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText('⟵  BACIA DE EVOLUÇÃO  ⟶', 0, 0);
+  ctx.restore();
+}
+
 // ── Port ──
 function drawPort() {
-  const px = W * 0.72;
+  const px = portX;
+  const berthDepth = quayBackX - px;
 
-  // Deep water shadow at quay edge
-  const sg = ctx.createLinearGradient(px, 0, px+30, 0);
-  sg.addColorStop(0,'rgba(0,0,0,0.35)'); sg.addColorStop(1,'transparent');
-  ctx.fillStyle = sg; ctx.fillRect(px, 0, 30, H);
+  // Deep water shadow at quay face
+  const sg = ctx.createLinearGradient(px, 0, px+24, 0);
+  sg.addColorStop(0,'rgba(0,0,0,0.40)'); sg.addColorStop(1,'transparent');
+  ctx.fillStyle = sg; ctx.fillRect(px, 0, 24, H);
 
-  // Quay concrete
+  // Quay concrete (solid land behind berths)
   ctx.fillStyle = '#4a4035';
-  ctx.fillRect(px+92, 0, W-px-92, H);
+  ctx.fillRect(quayBackX, 0, W - quayBackX, H);
 
   // Concrete texture strips
   ctx.strokeStyle = '#3a3028'; ctx.lineWidth = 1;
   for (let y = 0; y < H; y += 18) {
-    ctx.beginPath(); ctx.moveTo(px+92,y); ctx.lineTo(W,y); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(quayBackX, y); ctx.lineTo(W, y); ctx.stroke();
   }
 
-  // Quay face (edge wall)
+  // Pier bodies (concrete between berths and above/below them)
+  ctx.fillStyle = '#5a5040';
+  for (const [y1, y2] of getPiers()) {
+    if (y2 - y1 < 2) continue;
+    ctx.fillRect(px, y1, berthDepth, y2 - y1);
+    // Hatching lines on pier surface
+    ctx.strokeStyle = '#4a4030'; ctx.lineWidth = 1;
+    for (let yy = y1+6; yy < y2; yy += 12) {
+      ctx.beginPath(); ctx.moveTo(px, yy); ctx.lineTo(quayBackX, yy); ctx.stroke();
+    }
+  }
+
+  // Quay face wall (vertical edge between water and pier/berth)
   ctx.fillStyle = '#6a5a48';
-  ctx.fillRect(px+88, 0, 8, H);
-  // Top highlight
+  ctx.fillRect(quayBackX - 6, 0, 8, H);
   ctx.fillStyle = '#8a7a68';
-  ctx.fillRect(px+88, 0, 2, H);
+  ctx.fillRect(quayBackX - 6, 0, 2, H);
 
-  // Warehouse buildings
-  const warehouses = [
-    { x: px+100, y: 10,      w: Math.min(W-px-110, 120), h: H*0.25 },
-    { x: px+100, y: H*0.38,  w: Math.min(W-px-110, 100), h: H*0.22 },
-    { x: px+100, y: H*0.72,  w: Math.min(W-px-110, 110), h: H*0.24 },
-  ];
-  for (const wh of warehouses) {
-    if (wh.x + wh.w > W - 4) continue;
-    // Building shadow
-    ctx.fillStyle = 'rgba(0,0,0,0.3)';
-    ctx.fillRect(wh.x+4, wh.y+4, wh.w, wh.h);
-    // Building body
-    ctx.fillStyle = '#5a5040';
-    ctx.fillRect(wh.x, wh.y, wh.w, wh.h);
-    // Roof
-    ctx.fillStyle = '#4a4030';
-    ctx.fillRect(wh.x, wh.y, wh.w, 8);
-    // Doors
-    const doorW = 16, doorH = 22;
-    for (let dx = wh.x + 14; dx < wh.x+wh.w-doorW; dx += doorW+14) {
-      ctx.fillStyle = '#2a2018';
-      ctx.fillRect(dx, wh.y+wh.h-doorH, doorW, doorH);
-      ctx.strokeStyle = '#3a3028'; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(dx+doorW/2, wh.y+wh.h-doorH); ctx.lineTo(dx+doorW/2, wh.y+wh.h); ctx.stroke();
+  // Berth back wall (quay face at portX)
+  ctx.fillStyle = '#5c4e3c';
+  ctx.fillRect(px - 4, 0, 4, H);
+
+  // Warehouse buildings on land (right of quayBackX)
+  const whX = quayBackX + 8;
+  const whW = Math.max(0, W - whX - 6);
+  if (whW > 20) {
+    const warehouses = [
+      { y: 4,       h: H*0.26 },
+      { y: H*0.38,  h: H*0.22 },
+      { y: H*0.72,  h: H*0.25 },
+    ];
+    for (const wh of warehouses) {
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      ctx.fillRect(whX+4, wh.y+4, whW, wh.h);
+      ctx.fillStyle = '#5a5040';
+      ctx.fillRect(whX, wh.y, whW, wh.h);
+      ctx.fillStyle = '#4a4030';
+      ctx.fillRect(whX, wh.y, whW, 8);
+      ctx.fillStyle = '#ffeeaa';
+      for (let wx = whX+10; wx < whX+whW-8; wx += 18)
+        ctx.fillRect(wx, wh.y+12, 7, 5);
+      const doorW=14, doorH=20;
+      for (let dx = whX+12; dx < whX+whW-doorW; dx += doorW+12) {
+        ctx.fillStyle='#2a2018'; ctx.fillRect(dx, wh.y+wh.h-doorH, doorW, doorH);
+      }
     }
-    // Windows
-    ctx.fillStyle = '#ffeeaa';
-    for (let wx = wh.x+10; wx < wh.x+wh.w-8; wx += 18) {
-      ctx.fillRect(wx, wh.y+12, 8, 6);
-    }
+    drawCrane(whX+4, H * 0.20);
+    drawCrane(whX+4, H * 0.62);
   }
-
-  // Portal crane (simplified top-down silhouette)
-  drawCrane(px + 94, H * 0.18);
-  drawCrane(px + 94, H * 0.60);
 }
 
 function drawCrane(x, y) {
@@ -643,61 +778,75 @@ function drawBerths() {
     const isDocked  = b.docked;
     const pulse     = 0.5 + 0.5 * Math.sin(now * 0.004);
 
-    // Water area of berth
+    // Berth water slot
     ctx.save();
     if (isDocked) {
-      ctx.fillStyle   = 'rgba(0,255,120,0.15)';
+      ctx.fillStyle   = 'rgba(0,200,100,0.18)';
       ctx.strokeStyle = '#00ff88';
+      ctx.lineWidth   = 2;
     } else if (isTarget) {
-      ctx.fillStyle   = `rgba(0,180,255,${0.06+pulse*0.12})`;
-      ctx.strokeStyle = `rgba(0,200,255,${0.4+pulse*0.6})`;
+      ctx.fillStyle   = `rgba(0,160,255,${0.06+pulse*0.14})`;
+      ctx.strokeStyle = `rgba(0,210,255,${0.45+pulse*0.55})`;
+      ctx.lineWidth   = 2.5;
     } else {
-      ctx.fillStyle   = 'rgba(0,0,0,0.15)';
-      ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+      ctx.fillStyle   = 'rgba(0,30,60,0.30)';
+      ctx.strokeStyle = 'rgba(150,140,120,0.35)';
+      ctx.lineWidth   = 1.5;
     }
-    ctx.lineWidth = 2;
     ctx.beginPath(); ctx.rect(b.x, b.y, b.w, b.h);
     ctx.fill(); ctx.stroke();
     ctx.restore();
 
-    // Arrow guides into berth when target
+    // Pier edge lines (top and bottom of berth slot — the pier faces)
+    ctx.strokeStyle = '#7a6a58'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(b.x, b.y); ctx.lineTo(b.x+b.w, b.y); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(b.x, b.y+b.h); ctx.lineTo(b.x+b.w, b.y+b.h); ctx.stroke();
+
+    // Bollards on pier edges (top & bottom)
+    for (const [boll_y, side] of [[b.y, -1], [b.y+b.h, 1]]) {
+      for (const boll_x of [b.x+8, b.x+b.w/2, b.x+b.w-8]) {
+        // Bollard body
+        ctx.beginPath(); ctx.arc(boll_x, boll_y + side*5, 5, 0, Math.PI*2);
+        ctx.fillStyle = '#6a5a48'; ctx.fill();
+        ctx.beginPath(); ctx.arc(boll_x, boll_y + side*5, 2.5, 0, Math.PI*2);
+        ctx.fillStyle = '#9a8a78'; ctx.fill();
+        // Rope when docked
+        if (isDocked) {
+          ctx.save();
+          ctx.strokeStyle = '#aa8855'; ctx.lineWidth = 1.5; ctx.setLineDash([3,3]);
+          ctx.beginPath();
+          ctx.moveTo(boll_x, boll_y + side*5);
+          ctx.lineTo(b.x+b.w/2, b.y+b.h/2);
+          ctx.stroke(); ctx.setLineDash([]); ctx.restore();
+        }
+      }
+    }
+
+    // Pulsing entry arrows when target
     if (isTarget) {
       ctx.save();
-      ctx.globalAlpha = 0.35 + pulse*0.35;
-      ctx.fillStyle = '#00eeff';
+      ctx.globalAlpha = 0.30 + pulse*0.40;
+      ctx.fillStyle   = '#00eeff';
       for (let aw = 0; aw < 3; aw++) {
-        const ax = b.x + 14 + aw*20;
-        const ay = b.y + b.h/2;
+        const ax = b.x + 10 + aw*18, ay = b.y + b.h/2;
         ctx.beginPath();
-        ctx.moveTo(ax, ay-7); ctx.lineTo(ax+10, ay); ctx.lineTo(ax, ay+7);
+        ctx.moveTo(ax, ay-6); ctx.lineTo(ax+10, ay); ctx.lineTo(ax, ay+6);
         ctx.fill();
       }
       ctx.restore();
     }
 
-    // Mooring bollards (4 corners)
-    const bollardPositions = [
-      [b.x+6, b.y+8], [b.x+6, b.y+b.h-8],
-    ];
-    for (const [bx, by] of bollardPositions) {
-      ctx.beginPath(); ctx.arc(bx, by, 5, 0, Math.PI*2);
-      ctx.fillStyle = '#7a6a58'; ctx.fill();
-      ctx.beginPath(); ctx.arc(bx, by, 3, 0, Math.PI*2);
-      ctx.fillStyle = '#9a8a78'; ctx.fill();
-      // Mooring rope
-      if (isDocked) {
-        ctx.strokeStyle = '#886644'; ctx.lineWidth = 1.5;
-        ctx.setLineDash([3,3]);
-        ctx.beginPath(); ctx.moveTo(bx+4, by); ctx.lineTo(bx+24, by); ctx.stroke();
-        ctx.setLineDash([]);
-      }
+    // Back wall rubber fenders
+    for (let fy = b.y+8; fy < b.y+b.h-4; fy += 14) {
+      ctx.beginPath(); ctx.arc(b.x+b.w-3, fy, 3, 0, Math.PI*2);
+      ctx.fillStyle = '#444'; ctx.fill();
     }
 
     // Label
-    ctx.fillStyle = isDocked ? '#00ff88' : isTarget ? '#7df4ff' : 'rgba(255,255,255,0.25)';
+    ctx.fillStyle = isDocked ? '#00ff88' : isTarget ? '#7df4ff' : 'rgba(200,190,170,0.35)';
     ctx.font = `bold ${isTarget?13:11}px monospace`;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(isDocked ? `✓ CAIS ${b.id+1}` : `CAIS ${b.id+1}`, b.x+b.w/2+6, b.y+b.h/2);
+    ctx.fillText(isDocked ? `✓ CAIS ${b.id+1}` : `CAIS ${b.id+1}`, b.x+b.w/2, b.y+b.h/2);
   }
 }
 
@@ -843,10 +992,9 @@ function drawConnectBtn() {
     label  = near ? '🔗 CONECTAR' : '⚓ APROXIMAR';
     if (near) { bg='rgba(0,140,70,0.9)'; border='#00ff88'; fg='#00ff88'; glow=true; }
   } else if (phase === 'towing') {
-    const tb=targetBerth;
-    const near = Math.hypot(ship.x-(tb.x+tb.w/2), ship.y-(tb.y+tb.h/2)) < 130;
-    label  = near ? '✂️ SOLTAR CABO' : '🚢 REBOCANDO';
-    if (near) { bg='rgba(140,70,0,0.9)'; border='#ffaa00'; fg='#ffcc44'; glow=true; }
+    const inBasin = ship.x > basinX;
+    label  = inBasin ? '✂️ SOLTAR CABO' : '🚢 REBOCANDO';
+    if (inBasin) { bg='rgba(140,70,0,0.9)'; border='#ffaa00'; fg='#ffcc44'; glow=true; }
   } else if (phase === 'pushing') {
     label='⬆️ EMPURRAR'; bg='rgba(70,0,110,0.8)'; border='#aa44ff'; fg='#dd88ff';
   } else {
@@ -890,8 +1038,8 @@ function drawPhaseHint() {
   const near = phase==='approach' && Math.hypot(tf.x-bow.x, tf.y-bow.y)<CONNECT_DIST;
   const hints = {
     approach: near ? '✅ Pressione CONECTAR!' : '🚤 Aproxime da proa do navio',
-    towing:   '🚢 Reboque pelo corredor · não bata nas boias!',
-    pushing:  '⬆️ Encoste e empurre o navio para o cais',
+    towing:   ship && ship.x > basinX ? '✂️ Na bacia! Solte o cabo e empurre' : '🚢 Reboque pelo corredor · não bata nas boias!',
+    pushing:  '🚤 Encoste e empurre o navio para dentro do cais',
     docked:   mission+1 < totalMissions ? '🎉 Atracado! Próxima missão...' : '🏆 Todas as missões concluídas!',
   };
   el.textContent = hints[phase] || '';
