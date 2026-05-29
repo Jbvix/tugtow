@@ -400,6 +400,19 @@ function buildWorld(){
 
   bridge={x:BRIDGE_X, locked:true, openAmt:0, t:0, period:3000};
 
+  // Moedas espalhadas ao longo do percurso (25pts cada)
+  const coinSpots=[
+    150,350,500,720,900,1100,1280,1450,1650,1820,
+    2000,2150,2400,2550,2700,
+    BRIDGE_X+220, BRIDGE_X+380, BRIDGE_X+520,
+    SHIP_X+200, CORRIDOR_X+80, CORRIDOR_X+240, BASIN_X+120, BASIN_X+320,
+  ];
+  const coins=coinSpots.map((cx,i)=>({
+    type:'coin', x:cx,
+    y:canalY(cx)+(i%2===0?-38:38),
+    collected:false, ph:i*0.71
+  }));
+
   collectibles=[
     {type:'wrench',x:230,  y:H*0.22,collected:false,ph:0},
     {type:'fuel',  x:560,  y:H*0.72,collected:false,ph:1.6},
@@ -410,6 +423,7 @@ function buildWorld(){
     {type:'key',   x:2600, y:H*0.50,collected:false,ph:3.1},
     // Posto de combustível logo após a ponte
     {type:'fuel',  x:BRIDGE_X+140, y:H*0.40,collected:false,ph:0.4},
+    ...coins,
   ];
 
   vessels=makeVessels();
@@ -644,6 +658,11 @@ function updateCollectibles(){
           showMsg('⛽ Tanque cheio!');
         }
       }
+    } else if(c.type==='coin'&&dist<22){
+      c.collected=true;
+      score+=25;
+      spawnP(c.x,c.y,'#ffd700',10);
+      sfx('collect');
     } else if(dist<28){
       c.collected=true;
       spawnP(c.x,c.y,{wrench:'#88ff44',key:'#ffdd00'}[c.type],14);
@@ -1101,21 +1120,43 @@ function drawCollectibles(){
     const bob=Math.sin(now*.003+c.ph)*4;
     const x=c.x,y=c.y+bob;
     const pulse=0.5+0.5*Math.sin(now*.005+c.ph);
-    const info={wrench:{col:'#88ff44',bg:'rgba(10,40,5,.88)',icon:'🔧'},
-                fuel:  {col:'#ff9922',bg:'rgba(50,18,2,.88)', icon:'⛽'},
-                key:   {col:'#ffdd00',bg:'rgba(50,48,0,.88)', icon:'🗝️'}}[c.type];
-    ctx.save();
-    ctx.shadowBlur=16; ctx.shadowColor=info.col;
-    ctx.beginPath(); ctx.arc(x,y,17,0,Math.PI*2);
-    ctx.fillStyle=info.bg; ctx.fill();
-    ctx.strokeStyle=info.col; ctx.lineWidth=2.5; ctx.stroke();
-    ctx.shadowBlur=0;
-    ctx.beginPath(); ctx.arc(x,y,22+pulse*6,0,Math.PI*2);
-    ctx.strokeStyle=info.col.replace(')',`,${0.28*pulse})`).replace('rgb','rgba');
-    ctx.lineWidth=2; ctx.stroke();
-    ctx.font='15px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
-    ctx.fillText(info.icon,x,y+1);
-    ctx.restore();
+    if(c.type==='coin'){
+      const spin=Math.abs(Math.cos(now*.004+c.ph));
+      ctx.save();
+      ctx.translate(x,y);
+      ctx.shadowBlur=18; ctx.shadowColor='#ffd700';
+      ctx.scale(spin,1);
+      ctx.beginPath(); ctx.arc(0,0,12,0,Math.PI*2);
+      const cg=ctx.createRadialGradient(-4,-4,2,0,0,12);
+      cg.addColorStop(0,'#fff7a0'); cg.addColorStop(0.5,'#ffd700'); cg.addColorStop(1,'#b8860b');
+      ctx.fillStyle=cg; ctx.fill();
+      ctx.strokeStyle='#a0720a'; ctx.lineWidth=1.5; ctx.stroke();
+      ctx.shadowBlur=0; ctx.scale(1/(spin||0.001),1);
+      ctx.font='bold 9px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillStyle='#7a4f00'; ctx.fillText('$',0,1);
+      ctx.restore();
+      // anel de brilho externo
+      ctx.save(); ctx.globalAlpha=0.3*pulse;
+      ctx.beginPath(); ctx.arc(x,y,18+pulse*5,0,Math.PI*2);
+      ctx.strokeStyle='#ffd700'; ctx.lineWidth=2; ctx.stroke();
+      ctx.restore();
+    } else {
+      const info={wrench:{col:'#88ff44',bg:'rgba(10,40,5,.88)',icon:'🔧'},
+                  fuel:  {col:'#ff9922',bg:'rgba(50,18,2,.88)', icon:'⛽'},
+                  key:   {col:'#ffdd00',bg:'rgba(50,48,0,.88)', icon:'🗝️'}}[c.type];
+      ctx.save();
+      ctx.shadowBlur=16; ctx.shadowColor=info.col;
+      ctx.beginPath(); ctx.arc(x,y,17,0,Math.PI*2);
+      ctx.fillStyle=info.bg; ctx.fill();
+      ctx.strokeStyle=info.col; ctx.lineWidth=2.5; ctx.stroke();
+      ctx.shadowBlur=0;
+      ctx.beginPath(); ctx.arc(x,y,22+pulse*6,0,Math.PI*2);
+      ctx.strokeStyle=info.col.replace(')',`,${0.28*pulse})`).replace('rgb','rgba');
+      ctx.lineWidth=2; ctx.stroke();
+      ctx.font='15px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText(info.icon,x,y+1);
+      ctx.restore();
+    }
   }
 }
 
