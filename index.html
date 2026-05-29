@@ -111,6 +111,7 @@
      e atraque os 3 navios no porto!</p>
   <p style="opacity:.6;font-size:11px">📱 Joystick esquerdo · Botão AÇÃO (direito) &nbsp;|&nbsp; 🖥️ WASD/Setas · Espaço</p>
   <button id="btn-start">ZARPAR ⚓</button>
+  <button id="btn-ranking" style="background:#063a55;border-color:#ffd70066;color:#ffe066">🏆 RANKING</button>
   <div class="credit">TugLife Games · por <b>Jossian Brito</b> · 2026</div>
 </div>
 <script>
@@ -1483,26 +1484,95 @@ function drawMsg(){
   ctx.restore();
 }
 
+// ─── Ranking (localStorage) ─────────────────────────────────────────────────────
+const RANK_KEY='tugrush_ranking_v1', RANK_MAX=10;
+function loadRanking(){
+  try{ const r=JSON.parse(localStorage.getItem(RANK_KEY)); return Array.isArray(r)?r:[]; }
+  catch(e){ return []; }
+}
+function rankPosition(sc){
+  const r=loadRanking();
+  let pos=r.filter(e=>e.score>=sc).length;
+  return (pos<RANK_MAX)?pos+1:0; // 0 = não entrou no top
+}
+function saveScore(name,sc,time){
+  const r=loadRanking();
+  r.push({name:(name||'ANÔNIMO').slice(0,12).toUpperCase(),score:sc,time:Math.floor(time),date:Date.now()});
+  r.sort((a,b)=>b.score-a.score);
+  const top=r.slice(0,RANK_MAX);
+  try{ localStorage.setItem(RANK_KEY,JSON.stringify(top)); }catch(e){}
+  return top;
+}
+function rankRowsHTML(highlight){
+  const r=loadRanking();
+  if(!r.length) return `<p style="opacity:.6">Nenhuma pontuação ainda.<br>Seja o primeiro! ⚓</p>`;
+  const medal=['🥇','🥈','🥉'];
+  let h='<div style="width:100%;max-width:330px;font-size:13px">';
+  r.forEach((e,i)=>{
+    const hl=(highlight!=null&&i===highlight);
+    h+=`<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;margin:3px 0;border-radius:8px;
+        background:${hl?'#ffd70022':'#0a3a5522'};border:1px solid ${hl?'#ffd700':'#1d5f8033'}">
+        <span style="width:26px;text-align:center">${medal[i]||(i+1)}</span>
+        <span style="flex:1;color:${hl?'#ffd700':'#aee6ff'};font-weight:bold;letter-spacing:1px">${e.name}</span>
+        <span style="color:#ffe066;font-weight:bold">${e.score}</span>
+        <span style="width:46px;text-align:right;opacity:.65;font-size:11px">${fmtTime(e.time)}</span>
+      </div>`;
+  });
+  return h+'</div>';
+}
+function showRanking(){
+  const ov=document.getElementById('overlay');
+  ov.innerHTML=`<h1>🏆 RANKING</h1>
+    <h2 style="margin-bottom:10px">TOP ${RANK_MAX}</h2>
+    ${rankRowsHTML()}
+    <button id="btn-back">⚓ MENU</button>`;
+  ov.style.display='flex';
+  document.getElementById('btn-back').addEventListener('click',exitToMenu);
+}
+
 // ─── Overlays ─────────────────────────────────────────────────────────────────
 function fmtTime(t){const m=Math.floor(t/60),s=Math.floor(t%60);return `${m}:${s<10?'0':''}${s}`;}
-function showGameOver(){
+function endScreen(titleHTML,subHTML){
   const ov=document.getElementById('overlay');
-  ov.innerHTML=`<h1 style="color:#ff4444">💀 GAME OVER</h1>
-    <p>Vidas esgotadas!<br>Pontuação: <strong style="color:#ffd700;font-size:22px">${score}</strong><br>
-    ⏱ Tempo: <strong style="color:#ffe066">${fmtTime(gameTime)}</strong></p>
-    <button id="btn-restart">TENTAR NOVAMENTE</button>`;
+  const finalScore=score, finalTime=gameTime;
+  const pos=rankPosition(finalScore);
+  let body=`${titleHTML}<p>${subHTML}</p>`;
+  if(pos>0){
+    body+=`<p style="color:#ffd700;font-size:14px">🎉 Você entrou no TOP ${RANK_MAX}! (posição ${pos})</p>
+      <input id="rank-name" maxlength="12" placeholder="SEU NOME" autocomplete="off"
+        style="font-family:inherit;text-transform:uppercase;text-align:center;letter-spacing:2px;
+        font-size:16px;padding:10px 14px;border-radius:10px;border:2px solid #00cfff;
+        background:#04263f;color:#aee6ff;width:min(70vw,220px);outline:none">
+      <button id="btn-save">SALVAR 🏅</button>`;
+  }else{
+    body+=`<button id="btn-rank">🏆 VER RANKING</button>`;
+  }
+  body+=`<button id="btn-restart">${'JOGAR NOVAMENTE'}</button>`;
+  ov.innerHTML=body;
   ov.style.display='flex';
-  document.getElementById('btn-restart').addEventListener('click',startGame);
+  const r=document.getElementById('btn-restart');
+  if(r) r.addEventListener('click',startGame);
+  const rk=document.getElementById('btn-rank');
+  if(rk) rk.addEventListener('click',showRanking);
+  const sv=document.getElementById('btn-save');
+  if(sv){
+    const inp=document.getElementById('rank-name');
+    setTimeout(()=>inp&&inp.focus(),50);
+    const doSave=()=>{ saveScore(inp.value.trim(),finalScore,finalTime); showRanking(); };
+    sv.addEventListener('click',doSave);
+    inp.addEventListener('keydown',e=>{ if(e.key==='Enter')doSave(); });
+  }
+}
+function showGameOver(){
+  endScreen(`<h1 style="color:#ff4444">💀 GAME OVER</h1>`,
+    `Vidas esgotadas!<br>Pontuação: <strong style="color:#ffd700;font-size:22px">${score}</strong><br>
+     ⏱ Tempo: <strong style="color:#ffe066">${fmtTime(gameTime)}</strong>`);
 }
 function showVictory(){
-  const ov=document.getElementById('overlay');
-  ov.innerHTML=`<h1>🏆 VITÓRIA!</h1>
-    <p>Todos os 3 navios atracados!<br>
-    Pontuação final: <strong style="color:#ffd700;font-size:24px">${score}</strong><br>
-    ⏱ Tempo total: <strong style="color:#ffe066">${fmtTime(gameTime)}</strong></p>
-    <button id="btn-restart">JOGAR NOVAMENTE</button>`;
-  ov.style.display='flex';
-  document.getElementById('btn-restart').addEventListener('click',startGame);
+  endScreen(`<h1>🏆 VITÓRIA!</h1>`,
+    `Todos os 3 navios atracados!<br>
+     Pontuação final: <strong style="color:#ffd700;font-size:24px">${score}</strong><br>
+     ⏱ Tempo total: <strong style="color:#ffe066">${fmtTime(gameTime)}</strong>`);
 }
 
 // ─── Utils ────────────────────────────────────────────────────────────────────
@@ -1528,6 +1598,7 @@ function startGame(){
   startMusic();
 }
 document.getElementById('btn-start').addEventListener('click',startGame);
+document.getElementById('btn-ranking').addEventListener('click',showRanking);
 
 // ─── Splash → Menu ──────────────────────────────────────────────────────────
 function dismissSplash(){
