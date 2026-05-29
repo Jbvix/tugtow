@@ -164,6 +164,15 @@ const SHIP_DRAG=0.985, SHIP_ANGDRAG=0.965;
 const CONNECT_DIST=52, DOCK_DIST=42, PUSH_FORCE=0.11;
 const BUOY_R=13, BUOY_PEN=80, MAX_LIVES=3;
 const SHIP_LEN=90, SHIP_WID=24;
+const CANAL_AMP=0.22; // amplitude das curvas em fracção de H (≈ 0.22*H de cada lado)
+
+// Retorna o Y central do canal numa posição X (0 a CHANNEL_END → canal curvo; além disso → H/2)
+function canalY(x){
+  if(x<=0||x>=CHANNEL_END) return H/2;
+  const t=x/CHANNEL_END;
+  // 2 curvas opostas: subida no 1º terço, descida no 2º/3º — seno de 1 período completo
+  return H/2 + Math.sin(t*Math.PI*2)*H*CANAL_AMP;
+}
 
 // ─── State ────────────────────────────────────────────────────────────────────
 let gameState='menu', phase;
@@ -262,32 +271,37 @@ function buildWorld(){
 }
 
 function makeVessels(){
+  // vy começa em 0; updateVessels orienta cada navio pelo canalY
+  const mk=(wx,lane,vx,len,wid,color,type)=>({
+    wx, y:canalY(wx)+lane, vy:0, vx, len, wid, color, type, lane
+  });
   return[
-    {wx:180,  y:H*.20,vx:1.3, len:90, wid:22,color:'#1a4488',type:'ferry'},
-    {wx:520,  y:H*.75,vx:-1.1,len:115,wid:28,color:'#2a4422',type:'cargo'},
-    {wx:310,  y:H*.47,vx:0.9, len:58, wid:16,color:'#883322',type:'patrol'},
-    {wx:740,  y:H*.30,vx:-1.5,len:130,wid:30,color:'#553311',type:'tanker'},
-    {wx:60,   y:H*.63,vx:1.7, len:48, wid:14,color:'#666622',type:'small'},
-    {wx:420,  y:H*.12,vx:-0.8,len:80, wid:20,color:'#224466',type:'ferry'},
-    {wx:1150, y:H*.22,vx:-1.2,len:100,wid:24,color:'#2a4488',type:'ferry'},
-    {wx:1320, y:H*.68,vx:1.0, len:120,wid:28,color:'#553322',type:'cargo'},
-    {wx:1500, y:H*.40,vx:-1.6,len:135,wid:30,color:'#444411',type:'tanker'},
-    {wx:1000, y:H*.55,vx:1.4, len:54, wid:15,color:'#883333',type:'patrol'},
-    {wx:1700, y:H*.15,vx:-0.9,len:70, wid:18,color:'#225588',type:'small'},
-    {wx:1250, y:H*.88,vx:1.1, len:95, wid:22,color:'#334466',type:'ferry'},
+    mk(180,  -H*.08, 1.3, 90, 22,'#1a4488','ferry'),
+    mk(520,   H*.08,-1.1,115, 28,'#2a4422','cargo'),
+    mk(310,   H*.04, 0.9, 58, 16,'#883322','patrol'),
+    mk(740,  -H*.06,-1.5,130, 30,'#553311','tanker'),
+    mk(60,    H*.10, 1.7, 48, 14,'#666622','small'),
+    mk(420,  -H*.10,-0.8, 80, 20,'#224466','ferry'),
+    mk(1150, -H*.05,-1.2,100, 24,'#2a4488','ferry'),
+    mk(1320,  H*.07, 1.0,120, 28,'#553322','cargo'),
+    mk(1500,  H*.03,-1.6,135, 30,'#444411','tanker'),
+    mk(1000,  H*.06, 1.4, 54, 15,'#883333','patrol'),
+    mk(1700, -H*.09,-0.9, 70, 18,'#225588','small'),
+    mk(1250,  H*.11, 1.1, 95, 22,'#334466','ferry'),
   ];
 }
 
-// Contêineres boiando — colidir reduz manutenção (avaria o casco)
+// Contêineres boiando no meio do canal
 const CONTAINER_COLORS=['#c0502a','#2a6ca0','#caa030','#3a8a5a','#9a3a4a','#5a5a6a'];
 function makeCrates(){
   const cs=[], xs=[340,610,820,1010,1190,1430,1560,1740,
                    1980,2180,2360,2560,2720,2840];
   for(const x of xs){
+    const cy=canalY(x)+( Math.random()-0.5)*H*0.08; // ligeiramente em torno do centro
     cs.push({
-      x, y:H*(0.14+Math.random()*0.72),
-      vy:(Math.random()-0.5)*0.45, drift:(Math.random()-0.5)*0.30,
-      w:30+Math.random()*16, hgt:18+Math.random()*6,
+      x, y:cy,
+      vy:(Math.random()-0.5)*0.35, drift:(Math.random()-0.5)*0.28,
+      w:28+Math.random()*14, hgt:16+Math.random()*6,
       spin:Math.random()*Math.PI, hit:false,
       color:CONTAINER_COLORS[Math.floor(Math.random()*CONTAINER_COLORS.length)]
     });
@@ -422,6 +436,9 @@ function updateVessels(){
     v.wx+=v.vx;
     if(v.vx>0&&v.wx>cEnd+100) v.wx=-100;
     if(v.vx<0&&v.wx<-100)      v.wx=cEnd+100;
+    // Navio segue o canal curvo: Y alvo = canalY(wx) + lane offset
+    const targetY=canalY(v.wx)+(v.lane||0);
+    v.y+=(targetY-v.y)*0.05; // convergência suave
     if(invTimer>0) continue;
     const d=Math.hypot(tug.x-v.wx,tug.y-v.y);
     if(d<(tug.len+v.len)/2.8) loseLife('collision');
@@ -433,24 +450,13 @@ function updateCrates(){
     const cr=Math.max(c.w,c.hgt)/2;
     c.spin+=0.010;
     c.y+=c.vy; c.x+=c.drift;
-    if(c.y<cr+20||c.y>H-cr-20) c.vy*=-1;
+    // conter dentro do canal (canalY ± banda)
+    const cy=canalY(c.x), band=H*0.20;
+    if(c.y<cy-band){ c.vy=Math.abs(c.vy)*0.6; c.y=cy-band; }
+    if(c.y>cy+band){ c.vy=-Math.abs(c.vy)*0.6; c.y=cy+band; }
     if(c.x<40||c.x>CHANNEL_END-40) c.drift*=-1;
-    // arrasto suave nas derivas (mudança lenta de trajetória)
-    c.drift*=0.998; c.vy*=0.998;
-
-    // Embarcações colidem com os contêineres e mudam sua trajetória lentamente
-    if(!c.hit){
-      for(const v of vessels){
-        if(Math.hypot(v.wx-c.x,v.y-c.y)<(v.len/2+cr)){
-          const ang=Math.atan2(c.y-v.y,c.x-v.wx);
-          c.drift+=Math.cos(ang)*0.05+v.vx*0.012;
-          c.vy   +=Math.sin(ang)*0.05;
-          c.drift=clamp(c.drift,-0.9,0.9); c.vy=clamp(c.vy,-0.7,0.7);
-        }
-      }
-    }
+    c.drift*=0.999; c.vy*=0.999;
     if(c.hit) continue;
-
     // Rebocador colide → avaria
     if(Math.hypot(tug.x-c.x,tug.y-c.y)<tug.len/2+cr-2){
       c.hit=true;
@@ -459,7 +465,11 @@ function updateCrates(){
       tug.vx+=Math.cos(ang)*1.6; tug.vy+=Math.sin(ang)*1.6;
       spawnP(c.x,c.y,'#cc8844',14);
       showMsg('📦 Avaria! Manutenção -22%');
-      setTimeout(()=>{c.hit=false;c.x=40+Math.random()*(CHANNEL_END-80);c.y=H*(0.14+Math.random()*0.72);},2600);
+      setTimeout(()=>{
+        c.hit=false;
+        c.x=80+Math.random()*(CHANNEL_END-160);
+        c.y=canalY(c.x)+(Math.random()-0.5)*H*0.06;
+      },2600);
     }
   }
 }
@@ -635,29 +645,63 @@ function drawWater(){
   }
 }
 
+// Pré-calcula pontos da curva do canal (centro, margem superior, margem inferior)
+const CANAL_HALF_W = 0.38; // semi-largura do canal em fracção de H
+function buildCanalPath(margin=0){
+  // retorna array de pontos {x,y} ao longo do eixo do canal
+  const pts=[],step=14;
+  for(let x=0;x<=CHANNEL_END;x+=step) pts.push({x,y:canalY(x)+margin});
+  return pts;
+}
+function traceCanal(pts){
+  ctx.moveTo(pts[0].x,pts[0].y);
+  for(let i=1;i<pts.length;i++) ctx.lineTo(pts[i].x,pts[i].y);
+}
 function drawChannelDeco(){
-  // Channel boundary lines
   const cEnd=CHANNEL_END;
-  ctx.strokeStyle='rgba(255,240,100,0.18)'; ctx.lineWidth=2; ctx.setLineDash([18,18]);
-  ctx.beginPath(); ctx.moveTo(0,H/2); ctx.lineTo(cEnd,H/2); ctx.stroke();
+  const hw=H*CANAL_HALF_W;
+
+  // Fundo do canal levemente mais claro (sugere profundidade)
+  const ctrPts=buildCanalPath(0);
+  const topPts=buildCanalPath(-hw);
+  const botPts=buildCanalPath( hw);
+  ctx.beginPath();
+  traceCanal(topPts);
+  for(let i=botPts.length-1;i>=0;i--) ctx.lineTo(botPts[i].x,botPts[i].y);
+  ctx.closePath();
+  ctx.fillStyle='rgba(0,80,160,0.13)'; ctx.fill();
+
+  // Margens do canal (balizamento)
+  const dashW=H<500?[12,14]:[16,18];
+  ctx.lineWidth=1.8; ctx.setLineDash(dashW);
+
+  ctx.strokeStyle='rgba(255,60,60,0.45)';   // margem port (vermelho)
+  ctx.beginPath(); traceCanal(topPts); ctx.stroke();
+  ctx.strokeStyle='rgba(0,210,80,0.45)';    // margem starboard (verde)
+  ctx.beginPath(); traceCanal(botPts); ctx.stroke();
+
+  // Centro tracejado amarelo
+  ctx.strokeStyle='rgba(255,240,100,0.18)'; ctx.lineWidth=1.5; ctx.setLineDash([18,20]);
+  ctx.beginPath(); traceCanal(ctrPts); ctx.stroke();
   ctx.setLineDash([]);
 
-  // Nav markers
-  for(let x=100;x<cEnd;x+=160){
-    // Green starboard
-    ctx.beginPath(); ctx.arc(x,H*0.89,7,0,Math.PI*2); ctx.fillStyle='#00aa33'; ctx.fill();
-    ctx.beginPath(); ctx.arc(x,H*0.11,7,0,Math.PI*2); ctx.fillStyle='#cc2200'; ctx.fill();
+  // Boias de balizamento ao longo das margens
+  for(let x=120;x<cEnd;x+=200){
+    const ty=canalY(x)-hw, by=canalY(x)+hw;
+    ctx.beginPath(); ctx.arc(x,ty,5,0,Math.PI*2); ctx.fillStyle='#dd2200'; ctx.fill();
+    ctx.beginPath(); ctx.arc(x,by,5,0,Math.PI*2); ctx.fillStyle='#00aa33'; ctx.fill();
   }
-  // Zone label
-  ctx.save(); ctx.globalAlpha=0.13; ctx.fillStyle='#aaddff';
-  ctx.font=`bold ${Math.floor(H*0.055)}px monospace`;
+
+  // Rótulo da zona
+  ctx.save(); ctx.globalAlpha=0.12; ctx.fillStyle='#aaddff';
+  ctx.font=`bold ${Math.floor(H*0.052)}px monospace`;
   ctx.textAlign='center'; ctx.textBaseline='middle';
   ctx.fillText('CANAL MOVIMENTADO',cEnd/2,H/2);
   ctx.restore();
 
-  // Open water zone label
-  ctx.save(); ctx.globalAlpha=0.10; ctx.fillStyle='#aaddff';
-  ctx.font=`bold ${Math.floor(H*0.045)}px monospace`;
+  // Rótulo mar aberto
+  ctx.save(); ctx.globalAlpha=0.09; ctx.fillStyle='#aaddff';
+  ctx.font=`bold ${Math.floor(H*0.042)}px monospace`;
   ctx.textAlign='center'; ctx.textBaseline='middle';
   ctx.fillText('MAR ABERTO',(cEnd+CORRIDOR_X)/2,H/2);
   ctx.restore();
