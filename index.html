@@ -927,7 +927,7 @@ function angleDiff(a,b) {
 
 // ─── Loop ─────────────────────────────────────────────────────────────────────
 let lastTime = 0;
-function loop(ts) { const dt=ts-lastTime; lastTime=ts; update(dt); draw(); requestAnimationFrame(loop); }
+function loop(ts) { const dt=ts-lastTime; lastTime=ts; if (tug) { update(dt); draw(); } requestAnimationFrame(loop); }
 
 function startGame() {
   score=0; mission=0;
