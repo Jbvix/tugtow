@@ -42,7 +42,6 @@
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
 let W, H;
-const WORLD_W = 2900;
 function resize(){
   W = canvas.width  = window.innerWidth;
   H = canvas.height = window.innerHeight;
@@ -149,17 +148,22 @@ const imgTug=svgImg(tugSVG), imgShip=svgImg(shipSVG);
 const imgBuoy=svgImg(buoySVG), imgBuoyHit=svgImg(buoyHitSVG);
 
 // ─── World constants ──────────────────────────────────────────────────────────
-const BRIDGE_X    = 880;
-const SHIP_X      = 1150;
-const CORRIDOR_X  = 1430;
-const BASIN_X     = 1870;
-const PORT_X      = 2220;
+// Canal com o dobro do comprimento (0 → CHANNEL_END)
+const CHANNEL_END = 1920;
+const BRIDGE_X    = 1840;
+const SHIP_X      = 2110;
+const CORRIDOR_X  = 2390;
+const BASIN_X     = 2830;
+const PORT_X      = 3180;
+const WORLD_W     = 3860;
 
 const TUG_SPEED=3.4, TUG_TURN=0.048;
-const CABLE_LEN=72, CABLE_STIFF=0.06;
-const SHIP_DRAG=0.97, SHIP_ANGDRAG=0.94;
-const CONNECT_DIST=52, DOCK_DIST=42, PUSH_FORCE=0.18;
+const CABLE_LEN=72, CABLE_STIFF=0.05;
+// Navio mais pesado: maior arrasto (perde velocidade devagar) e resposta lenta
+const SHIP_DRAG=0.985, SHIP_ANGDRAG=0.965;
+const CONNECT_DIST=52, DOCK_DIST=42, PUSH_FORCE=0.11;
 const BUOY_R=13, BUOY_PEN=80, MAX_LIVES=3;
+const SHIP_LEN=90, SHIP_WID=24;
 
 // ─── State ────────────────────────────────────────────────────────────────────
 let gameState='menu', phase;
@@ -167,11 +171,11 @@ let camX=0, waveOffset=0;
 let lives, fuel, maintenance, score, mission;
 let invTimer=0, fuelWarnTimer=0;
 let tug, ship, buoys, berths, targetBerth;
-let vessels, collectibles, bridge;
+let vessels, collectibles, bridge, crates;
 let portX, quayBackX, basinX, berthHG, berthSpacingG, berthStartYG;
 let particles=[], wakes=[];
 let msgText='', msgTimer=0;
-let connectBtnRect=null;
+let connectBtnRect=null, restartBtnRect=null, exitBtnRect=null;
 
 // ─── Input ────────────────────────────────────────────────────────────────────
 const keys={};
@@ -181,12 +185,24 @@ let joyActive=false, joyStartX=0, joyStartY=0, joyDX=0, joyDY=0;
 canvas.addEventListener('touchstart',onTS,{passive:false});
 canvas.addEventListener('touchmove', onTM,{passive:false});
 canvas.addEventListener('touchend',  onTE,{passive:false});
-canvas.addEventListener('mousedown', e=>{if(connectBtnRect&&inR(e.clientX,e.clientY,connectBtnRect))handleAction();});
+canvas.addEventListener('mousedown', e=>{if(handleTopButtons(e.clientX,e.clientY))return; if(connectBtnRect&&inR(e.clientX,e.clientY,connectBtnRect))handleAction();});
+
+function handleTopButtons(x,y){
+  if(gameState!=='playing')return false;
+  if(restartBtnRect&&inR(x,y,restartBtnRect)){ startGame(); return true; }
+  if(exitBtnRect&&inR(x,y,exitBtnRect)){ exitToMenu(); return true; }
+  return false;
+}
+function exitToMenu(){
+  gameState='menu';
+  location.reload();
+}
 function inJoy(x,y){return x<170&&y>H-170;}
 function inR(x,y,r){return x>=r.x&&x<=r.x+r.w&&y>=r.y&&y<=r.y+r.h;}
 function onTS(e){
   e.preventDefault();
   for(const t of e.changedTouches){
+    if(handleTopButtons(t.clientX,t.clientY))continue;
     if(connectBtnRect&&inR(t.clientX,t.clientY,connectBtnRect)){handleAction();continue;}
     if(inJoy(t.clientX,t.clientY)&&!joyActive){joyActive=true;joyStartX=t.clientX;joyStartY=t.clientY;joyDX=joyDY=0;}
   }
@@ -204,8 +220,9 @@ function onTE(e){e.preventDefault();joyActive=false;joyDX=joyDY=0;}
 
 // ─── Build world ──────────────────────────────────────────────────────────────
 function buildWorld(){
-  portX=PORT_X; const berthW=Math.min(100,W*0.24);
-  berthHG=Math.min(68,H*0.17); berthSpacingG=berthHG+22;
+  // Gaveta dimensionada ao COMPRIMENTO do navio (atraca na transversal, facilitando)
+  portX=PORT_X; const berthW=Math.max(120,SHIP_LEN+34);
+  berthHG=Math.max(70,SHIP_WID*1.8+34); berthSpacingG=berthHG+22;
   berthStartYG=H/2-(3*berthHG+2*22)/2; quayBackX=portX+berthW; basinX=BASIN_X;
 
   berths=Array.from({length:3},(_,i)=>({
@@ -222,19 +239,21 @@ function buildWorld(){
     buoys.push({x:bx,y:chY+hW,r:BUOY_R,hit:false,wobble:Math.random()*Math.PI*2});
   }
 
-  ship={x:SHIP_X,y:H*0.35,vx:0,vy:0,angle:0,angVel:0,len:90,wid:24,connected:false};
+  ship={x:SHIP_X,y:H*0.35,vx:0,vy:0,angle:0,angVel:0,len:SHIP_LEN,wid:SHIP_WID,connected:false};
   tug ={x:80,    y:H/2,   vx:0,vy:0,angle:0,len:44,wid:20};
 
   bridge={x:BRIDGE_X, locked:true, openAmt:0, gap:Math.max(88,100)};
 
-  const iy=[H*0.22,H*0.72,H*0.50];
   collectibles=[
-    {type:'wrench',x:230, y:iy[0],collected:false,ph:0},
-    {type:'fuel',  x:530, y:iy[1],collected:false,ph:1.6},
-    {type:'key',   x:740, y:iy[2],collected:false,ph:3.1},
+    {type:'wrench',x:230,  y:H*0.22,collected:false,ph:0},
+    {type:'fuel',  x:530,  y:H*0.72,collected:false,ph:1.6},
+    {type:'wrench',x:1080, y:H*0.30,collected:false,ph:2.2},
+    {type:'fuel',  x:1380, y:H*0.78,collected:false,ph:0.9},
+    {type:'key',   x:1650, y:H*0.50,collected:false,ph:3.1},
   ];
 
   vessels=makeVessels();
+  crates=makeCrates();
   phase='channel'; particles=[]; wakes=[]; camX=0; invTimer=0; fuelWarnTimer=0;
 }
 
@@ -246,7 +265,27 @@ function makeVessels(){
     {wx:740,  y:H*.30,vx:-1.5,len:130,wid:30,color:'#553311',type:'tanker'},
     {wx:60,   y:H*.63,vx:1.7, len:48, wid:14,color:'#666622',type:'small'},
     {wx:420,  y:H*.12,vx:-0.8,len:80, wid:20,color:'#224466',type:'ferry'},
+    {wx:1150, y:H*.22,vx:-1.2,len:100,wid:24,color:'#2a4488',type:'ferry'},
+    {wx:1320, y:H*.68,vx:1.0, len:120,wid:28,color:'#553322',type:'cargo'},
+    {wx:1500, y:H*.40,vx:-1.6,len:135,wid:30,color:'#444411',type:'tanker'},
+    {wx:1000, y:H*.55,vx:1.4, len:54, wid:15,color:'#883333',type:'patrol'},
+    {wx:1700, y:H*.15,vx:-0.9,len:70, wid:18,color:'#225588',type:'small'},
+    {wx:1250, y:H*.88,vx:1.1, len:95, wid:22,color:'#334466',type:'ferry'},
   ];
+}
+
+// Caixas/contêineres boiando — colidir reduz manutenção (avaria o casco)
+function makeCrates(){
+  const cs=[], xs=[340,610,820,1010,1190,1430,1560,1740];
+  for(const x of xs){
+    cs.push({
+      x, y:H*(0.14+Math.random()*0.72),
+      vy:(Math.random()-0.5)*0.5, drift:(Math.random()-0.5)*0.35,
+      r:13+Math.random()*8, spin:Math.random()*Math.PI, hit:false,
+      tone:Math.random()<0.5?'#8a5a28':'#9a7038'
+    });
+  }
+  return cs;
 }
 
 // ─── Action ───────────────────────────────────────────────────────────────────
@@ -321,6 +360,8 @@ function update(dt){
 
   // Vessels
   updateVessels();
+  // Floating crates (damage maintenance)
+  updateCrates();
   // Collectibles
   updateCollectibles();
 
@@ -368,7 +409,7 @@ function update(dt){
 }
 
 function updateVessels(){
-  const cEnd=960;
+  const cEnd=CHANNEL_END;
   for(const v of vessels){
     v.wx+=v.vx;
     if(v.vx>0&&v.wx>cEnd+100) v.wx=-100;
@@ -376,6 +417,26 @@ function updateVessels(){
     if(invTimer>0) continue;
     const d=Math.hypot(tug.x-v.wx,tug.y-v.y);
     if(d<(tug.len+v.len)/2.8) loseLife('collision');
+  }
+}
+
+function updateCrates(){
+  for(const c of crates){
+    c.spin+=0.012;
+    c.y+=c.vy; c.x+=c.drift;
+    if(c.y<c.r+20||c.y>H-c.r-20) c.vy*=-1;
+    if(c.x<40||c.x>CHANNEL_END-40) c.drift*=-1;
+    if(c.hit) continue;
+    if(Math.hypot(tug.x-c.x,tug.y-c.y)<tug.len/2+c.r-2){
+      c.hit=true;
+      maintenance=Math.max(0,maintenance-0.22);
+      // empurra o rebocador (impacto)
+      const ang=Math.atan2(tug.y-c.y,tug.x-c.x);
+      tug.vx+=Math.cos(ang)*1.6; tug.vy+=Math.sin(ang)*1.6;
+      spawnP(c.x,c.y,'#cc8844',14);
+      showMsg('📦 Avaria! Manutenção -22%');
+      setTimeout(()=>{c.hit=false;c.x=40+Math.random()*(CHANNEL_END-80);c.y=H*(0.14+Math.random()*0.72);},2600);
+    }
   }
 }
 
@@ -516,6 +577,7 @@ function draw(){
   drawChannelDeco();
   drawBridge();
   drawVessels();
+  drawCrates();
   drawCollectibles();
   drawBasin();
   drawPort();
@@ -529,6 +591,7 @@ function draw(){
   ctx.restore();
   // Screen-fixed UI
   drawHUD();
+  drawTopButtons();
   drawPhaseBar();
   drawActionBtn();
   drawJoystick();
@@ -550,7 +613,7 @@ function drawWater(){
 
 function drawChannelDeco(){
   // Channel boundary lines
-  const cEnd=960;
+  const cEnd=CHANNEL_END;
   ctx.strokeStyle='rgba(255,240,100,0.18)'; ctx.lineWidth=2; ctx.setLineDash([18,18]);
   ctx.beginPath(); ctx.moveTo(0,H/2); ctx.lineTo(cEnd,H/2); ctx.stroke();
   ctx.setLineDash([]);
@@ -619,7 +682,7 @@ function drawBridge(){
 }
 
 function drawVessels(){
-  const cEnd=960;
+  const cEnd=CHANNEL_END;
   for(const v of vessels){
     if(v.wx<camX-180||v.wx>camX+W+180)continue;
     // Hull
@@ -667,6 +730,31 @@ function lighten(hex,amt){
   const g=clamp(((n>>8)&0xff)+amt,0,255);
   const b=clamp((n&0xff)+amt,0,255);
   return `rgb(${r},${g},${b})`;
+}
+
+function drawCrates(){
+  for(const c of crates){
+    if(c.hit) continue;
+    if(c.x<camX-80||c.x>camX+W+80) continue;
+    const bob=Math.sin(c.spin*2)*2;
+    ctx.save();
+    ctx.translate(c.x,c.y+bob); ctx.rotate(Math.sin(c.spin)*0.18);
+    // sombra na água
+    ctx.fillStyle='rgba(0,0,0,.28)'; ctx.fillRect(-c.r+3,-c.r+4,c.r*2,c.r*2);
+    // corpo da caixa
+    ctx.fillStyle=c.tone; ctx.fillRect(-c.r,-c.r,c.r*2,c.r*2);
+    ctx.strokeStyle=lighten(c.tone,-40); ctx.lineWidth=2; ctx.strokeRect(-c.r,-c.r,c.r*2,c.r*2);
+    // ripas
+    ctx.strokeStyle=lighten(c.tone,30); ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.moveTo(-c.r,0); ctx.lineTo(c.r,0); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0,-c.r); ctx.lineTo(0,c.r); ctx.stroke();
+    ctx.strokeStyle=lighten(c.tone,-25); ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(-c.r,-c.r); ctx.lineTo(c.r,c.r); ctx.stroke();
+    // marca de aviso
+    ctx.fillStyle='rgba(255,200,40,.85)'; ctx.font=`bold ${Math.floor(c.r)}px sans-serif`;
+    ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('⚠',0,1);
+    ctx.restore();
+  }
 }
 
 function drawCollectibles(){
@@ -905,6 +993,26 @@ function drawHUD(){
     ctx.fillText('⛽ COMBUSTÍVEL CRÍTICO!',W/2,38);
   }
   ctx.textAlign='left';
+}
+
+function drawTopButtons(){
+  const bs=34, gap=8;
+  // posiciona abaixo do HUD, no canto direito
+  const y=58, x2=W-bs-12, x1=x2-bs-gap;
+  restartBtnRect={x:x1,y,w:bs,h:bs};
+  exitBtnRect   ={x:x2,y,w:bs,h:bs};
+  function btn(r,icon,col){
+    ctx.save();
+    ctx.beginPath(); ctx.roundRect(r.x,r.y,r.w,r.h,9);
+    ctx.fillStyle='rgba(0,12,30,.72)'; ctx.fill();
+    ctx.strokeStyle=col; ctx.lineWidth=1.5; ctx.stroke();
+    ctx.fillStyle=col; ctx.font='16px sans-serif';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(icon,r.x+r.w/2,r.y+r.h/2+1);
+    ctx.restore();
+  }
+  btn(restartBtnRect,'↻','#7df4ff');
+  btn(exitBtnRect,'⏏','#ff7766');
 }
 
 function drawHeart(x,y,r){
