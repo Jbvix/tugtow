@@ -251,7 +251,7 @@ function buildWorld(){
   ship={x:SHIP_X,y:H*0.35,vx:0,vy:0,angle:0,angVel:0,len:SHIP_LEN,wid:SHIP_WID,connected:false};
   tug ={x:80,    y:H/2,   vx:0,vy:0,angle:0,len:44,wid:20};
 
-  bridge={x:BRIDGE_X, locked:true, openAmt:0, gap:Math.max(88,100)};
+  bridge={x:BRIDGE_X, locked:true, openAmt:0, t:0, period:3000};
 
   collectibles=[
     {type:'wrench',x:230,  y:H*0.22,collected:false,ph:0},
@@ -376,8 +376,11 @@ function update(dt){
     if(wakes[i].life<=0) wakes.splice(i,1);
   }
 
-  // Bridge animation & collision
-  if(!bridge.locked&&bridge.openAmt<1) bridge.openAmt=Math.min(1,bridge.openAmt+0.007);
+  // Bridge: ciclo automático de abertura/fechamento (período reduzido)
+  if(!bridge.locked){
+    bridge.t+=dt;
+    bridge.openAmt=bridgeCycle(bridge.t,bridge.period);
+  }
   applyBridgeCollision();
 
   // Vessels
@@ -487,20 +490,36 @@ function updateCollectibles(){
   }
 }
 
+// Trapézio: abre (0→1), mantém aberto, fecha (1→0), mantém fechado
+function bridgeCycle(t,P){
+  const p=(t%P)/P;
+  if(p<0.16) return p/0.16;            // abrindo
+  if(p<0.46) return 1;                  // aberto (janela de passagem)
+  if(p<0.62) return 1-(p-0.46)/0.16;    // fechando
+  return 0;                             // fechado
+}
+
 function applyBridgeCollision(){
-  const halfGap=bridge.gap/2, cY=H/2;
-  const topGateBot=(cY-halfGap)*(1-bridge.openAmt);
-  const botGateTop=cY+halfGap+(H-cY-halfGap)*bridge.openAmt;
-  if(Math.abs(tug.x-bridge.x)<tug.len/2+12){
-    if(tug.y<topGateBot){
-      tug.y=topGateBot+tug.wid; tug.vy=Math.abs(tug.vy)*0.4;
-    } else if(tug.y>botGateTop){
-      tug.y=botGateTop-tug.wid; tug.vy=-Math.abs(tug.vy)*0.4;
+  const cY=H/2, gW=22;
+  // Geometria: openAmt=0 → portões se encontram no centro (vedado); openAmt=1 → totalmente abertos
+  const channelTop=cY*(1-bridge.openAmt);
+  const channelBot=cY+(H-cY)*bridge.openAmt;
+  const channelH=channelBot-channelTop;
+  const inXspan=Math.abs(tug.x-bridge.x)<tug.len/2+gW/2;
+
+  if(inXspan){
+    // Esmagamento: rebocador dentro do vão e a abertura ficou menor que ele
+    if(!bridge.locked && channelH<tug.wid*1.6 && tug.x>bridge.x-tug.len/2){
+      loseLife('bridge'); return;
     }
-    if(bridge.locked&&tug.x>bridge.x-tug.len/2-5){
-      tug.x=bridge.x-tug.len/2-5; tug.vx=-Math.abs(tug.vx)*0.5;
-      showMsg('🔒 Precisa da chave!');
-    }
+    // Portões empurram o rebocador para dentro do canal aberto
+    if(tug.y<channelTop){ tug.y=channelTop+tug.wid*0.6; tug.vy=Math.abs(tug.vy)*0.4; }
+    else if(tug.y>channelBot){ tug.y=channelBot-tug.wid*0.6; tug.vy=-Math.abs(tug.vy)*0.4; }
+  }
+  // Bloqueia a passagem enquanto travada ou pouco aberta (sem ter ainda cruzado o centro)
+  if((bridge.locked||channelH<tug.wid*2.2) && tug.x>bridge.x-tug.len/2-5 && tug.x<bridge.x){
+    tug.x=bridge.x-tug.len/2-5; tug.vx=-Math.abs(tug.vx)*0.5;
+    if(bridge.locked) showMsg('🔒 Precisa da chave!');
   }
 }
 
@@ -590,16 +609,16 @@ function dockSuccess(berth){
 function loseLife(reason){
   if(invTimer>0)return;
   lives--;
-  invTimer=210;
   spawnP(tug.x,tug.y,'#ff3300',22);
-  showMsg(reason==='fuel'?'⛽ Sem combustível! -1 vida':'💥 Colisão! -1 vida');
-  if(lives<=0){gameState='gameover';setTimeout(showGameOver,600);}
-  else{
-    tug.x=phase==='channel'?90:tug.x;
-    tug.y=phase==='channel'?H/2:tug.y;
-    tug.vx=0;tug.vy=0;
-    if(reason==='fuel') fuel=0.35;
+  const base=reason==='fuel'?'⛽ Sem combustível!':
+             reason==='bridge'?'🌉 Esmagado pela ponte!':'💥 Colisão!';
+  if(lives<=0){
+    gameState='gameover'; showMsg(base+' Fim de jogo'); setTimeout(showGameOver,600); return;
   }
+  showMsg(base+' -1 vida · Recomeçando do início!');
+  // Sempre recomeça do início (reconstrói o mundo da missão atual)
+  buildWorld();
+  fuel=1; maintenance=1; invTimer=120;
 }
 
 // ─── Draw ─────────────────────────────────────────────────────────────────────
@@ -708,9 +727,9 @@ function drawChannelDeco(){
 }
 
 function drawBridge(){
-  const bx=bridge.x, halfGap=bridge.gap/2, cY=H/2;
-  const topBot=Math.max(-20,(cY-halfGap)*(1-bridge.openAmt));
-  const botTop=Math.min(H+20,cY+halfGap+(H-cY-halfGap)*bridge.openAmt);
+  const bx=bridge.x, cY=H/2;
+  const topBot=cY*(1-bridge.openAmt);
+  const botTop=cY+(H-cY)*bridge.openAmt;
   const gW=22;
 
   function drawGate(y0,h){
@@ -735,17 +754,26 @@ function drawBridge(){
   ctx.fillRect(bx-gW/2-5,0,5,H);
   ctx.fillRect(bx+gW/2,    0,5,H);
 
-  // Lock / unlock icon
+  // Ícone / estado da ponte
   const now=Date.now();
+  ctx.textAlign='center'; ctx.textBaseline='middle';
   if(bridge.locked){
     ctx.save();
     ctx.shadowBlur=20; ctx.shadowColor=`rgba(255,50,50,${0.5+0.4*Math.sin(now*.006)})`;
-    ctx.font='22px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
-    ctx.fillText('🔒',bx,cY);
+    ctx.font='22px sans-serif'; ctx.fillText('🔒',bx,40);
     ctx.restore();
-  } else if(bridge.openAmt<1){
-    ctx.font='20px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
-    ctx.fillText('🔓',bx,cY);
+  } else {
+    // Semáforo: verde = aberto/passável, vermelho = fechando/fechado
+    const open=bridge.openAmt>0.45;
+    ctx.save();
+    ctx.shadowBlur=14; ctx.shadowColor=open?'#00ff66':`rgba(255,40,40,${0.5+0.5*Math.sin(now*.02)})`;
+    ctx.beginPath(); ctx.arc(bx,40,8,0,Math.PI*2);
+    ctx.fillStyle=open?'#00ee55':'#ff2222'; ctx.fill();
+    ctx.restore();
+    if(!open){
+      ctx.fillStyle='rgba(255,80,80,.9)'; ctx.font='bold 11px sans-serif';
+      ctx.fillText('⚠ FECHANDO',bx,60);
+    }
   }
 }
 
