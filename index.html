@@ -278,7 +278,7 @@ function initAudio(){
   if(!AC)return;
   audio.ctx=new AC();
   audio.master=audio.ctx.createGain(); audio.master.gain.value=audio.on?0.5:0; audio.master.connect(audio.ctx.destination);
-  audio.music=audio.ctx.createGain();  audio.music.gain.value=0.32; audio.music.connect(audio.master);
+  audio.music=audio.ctx.createGain();  audio.music.gain.value=0.18; audio.music.connect(audio.master);
   audio.sfx=audio.ctx.createGain();    audio.sfx.gain.value=0.5;  audio.sfx.connect(audio.master);
 }
 function blip(freq,start,dur,type,gain,dest){
@@ -292,13 +292,15 @@ function blip(freq,start,dur,type,gain,dest){
 }
 function musicScheduler(){
   if(!audio.ctx)return;
+  const urgency=(typeof fuel!=='undefined'&&fuel<0.20)?1+(0.20-fuel)/0.20*0.55:1;
+  const stepDur=STEP_DUR/urgency;
   while(audio.nextTime<audio.ctx.currentTime+0.2){
     const s=audio.step%32;
     const ln=LEAD[s];
-    if(ln) blip(midi(ln),audio.nextTime,STEP_DUR*0.92,'square',0.16,audio.music);
-    if(s%4===0) blip(midi(BASS[Math.floor(s/4)%BASS.length]),audio.nextTime,STEP_DUR*3,'triangle',0.22,audio.music);
-    if(s%4===2) blip(midi(88),audio.nextTime,0.025,'square',0.05,audio.music); // tick
-    audio.nextTime+=STEP_DUR; audio.step++;
+    if(ln) blip(midi(ln),audio.nextTime,stepDur*0.88,'square',0.16,audio.music);
+    if(s%4===0) blip(midi(BASS[Math.floor(s/4)%BASS.length]),audio.nextTime,stepDur*2.8,'triangle',0.22,audio.music);
+    if(s%4===2) blip(midi(88),audio.nextTime,0.022,'square',0.05,audio.music);
+    audio.nextTime+=stepDur; audio.step++;
   }
 }
 function startMusic(){
