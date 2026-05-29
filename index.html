@@ -8,33 +8,110 @@
   *{margin:0;padding:0;box-sizing:border-box;touch-action:none;user-select:none}
   body{background:#000;overflow:hidden;height:100dvh;font-family:'Segoe UI',sans-serif}
   canvas{display:block}
+
+  /* ─── Splash (logo do estúdio + autor) ─────────────────────────── */
+  #splash{
+    position:fixed;inset:0;z-index:30;
+    background:radial-gradient(ellipse at 50% 38%,#073050 0%,#021223 70%,#000 100%);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:26px;
+    animation:splashIn .6s ease both;
+  }
+  #splash.out{animation:splashOut .7s ease forwards}
+  @keyframes splashIn {from{opacity:0}to{opacity:1}}
+  @keyframes splashOut{from{opacity:1}to{opacity:0;visibility:hidden}}
+  #splash .logo{width:min(46vw,210px);height:auto;filter:drop-shadow(0 0 26px #00cfff88);
+    animation:floaty 3.2s ease-in-out infinite}
+  @keyframes floaty{0%,100%{transform:translateY(0) rotate(-2deg)}50%{transform:translateY(-12px) rotate(2deg)}}
+  #splash .studio{color:#7df4ff;font-size:clamp(22px,6vw,40px);font-weight:800;letter-spacing:4px;
+    text-shadow:0 0 22px #00cfff;text-align:center}
+  #splash .studio small{display:block;font-size:.42em;letter-spacing:6px;color:#5fb8d8;margin-top:6px;font-weight:600}
+  #splash .author{color:#9fd8ee;font-size:clamp(12px,3vw,15px);letter-spacing:1px;opacity:.9}
+  #splash .author b{color:#ffd86b}
+  #splash .tap{position:absolute;bottom:46px;color:#6fb0cc;font-size:12px;letter-spacing:2px;
+    animation:blink 1.3s steps(2,start) infinite}
+  @keyframes blink{50%{opacity:.25}}
+
+  /* ─── Menu / overlays ──────────────────────────────────────────── */
   #overlay{
-    position:fixed;inset:0;background:rgba(0,8,22,.93);
+    position:fixed;inset:0;background:rgba(0,8,22,.94);
     display:flex;flex-direction:column;align-items:center;justify-content:center;
     gap:14px;z-index:20;
   }
-  #overlay h1{color:#7df4ff;font-size:clamp(28px,7vw,48px);text-shadow:0 0 24px #00cfff;letter-spacing:3px}
-  #overlay h2{color:#00cfff;font-size:clamp(13px,3.5vw,19px)}
+  #overlay .title-logo{width:min(30vw,130px);margin-bottom:-6px;filter:drop-shadow(0 0 18px #00cfff77)}
+  #overlay h1{color:#7df4ff;font-size:clamp(30px,8vw,52px);text-shadow:0 0 24px #00cfff;
+    letter-spacing:4px;font-weight:900}
+  #overlay h1 span{color:#ffd86b;text-shadow:0 0 22px #ffb000}
+  #overlay h2{color:#00cfff;font-size:clamp(13px,3.5vw,19px);letter-spacing:2px}
   #overlay p{color:#aaddee;font-size:clamp(11px,2.5vw,13px);text-align:center;max-width:400px;line-height:1.75}
+  #overlay .credit{color:#6fa8c4;font-size:11px;letter-spacing:1px;margin-top:2px}
+  #overlay .credit b{color:#ffd86b}
   #overlay button{
     padding:13px 46px;font-size:17px;font-weight:700;
     background:linear-gradient(135deg,#005588,#00cfff);
     color:#fff;border:none;border-radius:30px;cursor:pointer;
-    box-shadow:0 0 28px #00cfff55;letter-spacing:1px;
+    box-shadow:0 0 28px #00cfff55;letter-spacing:1px;margin-top:6px;
   }
   #overlay button:active{transform:scale(.96)}
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
-<div id="overlay">
-  <h1>⚓ PAW</h1>
-  <h2>Rebocador Arcade</h2>
+
+<!-- ─── Splash do estúdio ─── -->
+<div id="splash">
+  <svg class="logo" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <radialGradient id="sea" cx="50%" cy="40%" r="70%">
+        <stop offset="0%" stop-color="#0a4f7a"/><stop offset="100%" stop-color="#03243d"/>
+      </radialGradient>
+      <linearGradient id="hull" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#ff5a3c"/><stop offset="100%" stop-color="#b8201a"/>
+      </linearGradient>
+    </defs>
+    <!-- emblema circular -->
+    <circle cx="100" cy="100" r="92" fill="url(#sea)" stroke="#00cfff" stroke-width="4"/>
+    <circle cx="100" cy="100" r="92" fill="none" stroke="#0a6f9c" stroke-width="9" opacity=".4"/>
+    <!-- ondas -->
+    <path d="M22,132 q14,-12 28,0 t28,0 t28,0 t28,0 t28,0" fill="none" stroke="#1d7fb0" stroke-width="4" opacity=".7"/>
+    <path d="M22,146 q14,-12 28,0 t28,0 t28,0 t28,0 t28,0" fill="none" stroke="#155f86" stroke-width="4" opacity=".6"/>
+    <!-- rebocador -->
+    <g transform="translate(58,70)">
+      <rect x="2" y="30" width="84" height="26" rx="7" fill="url(#hull)" stroke="#7a0f0c" stroke-width="2"/>
+      <rect x="0" y="50" width="88" height="8" rx="4" fill="#7a0f0c"/>
+      <rect x="20" y="10" width="40" height="24" rx="4" fill="#ffd24a" stroke="#c89010" stroke-width="2"/>
+      <rect x="26" y="16" width="12" height="11" rx="2" fill="#9fe2ff"/>
+      <rect x="42" y="16" width="12" height="11" rx="2" fill="#9fe2ff"/>
+      <rect x="64" y="2" width="13" height="22" rx="3" fill="#222"/>
+      <rect x="64" y="7" width="13" height="6" fill="#ff7a1a"/>
+      <circle cx="44" cy="44" r="4" fill="#fff" opacity=".85"/>
+    </g>
+    <!-- âncora pequena -->
+    <text x="100" y="178" text-anchor="middle" font-size="20">⚓</text>
+  </svg>
+  <div class="studio">TUGLIFE<small>GAMES</small></div>
+  <div class="author">um jogo de <b>Jossian Brito</b></div>
+  <div class="tap">toque para continuar</div>
+</div>
+
+<!-- ─── Menu principal ─── -->
+<div id="overlay" style="display:none">
+  <svg class="title-logo" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="100" cy="100" r="90" fill="#04263f" stroke="#00cfff" stroke-width="5"/>
+    <g transform="translate(58,72)">
+      <rect x="2" y="30" width="84" height="26" rx="7" fill="#d8281f" stroke="#7a0f0c" stroke-width="2"/>
+      <rect x="20" y="10" width="40" height="24" rx="4" fill="#ffd24a"/>
+      <rect x="64" y="2" width="13" height="22" rx="3" fill="#222"/>
+    </g>
+    <path d="M22,138 q14,-12 28,0 t28,0 t28,0 t28,0 t28,0" fill="none" stroke="#1d7fb0" stroke-width="5" opacity=".7"/>
+  </svg>
+  <h1>TUG<span>RUSH</span></h1>
+  <h2>⚓ Rebocador Arcade</h2>
   <p>Navegue pelo canal movimentado · colete 🔧 manutenção · ⛽ combustível · 🗝️ chave<br>
-     Abra a ponte · conecte ao navio · atravesse o corredor de boias<br>
+     Cruze a ponte bipartida · conecte ao navio · atravesse o corredor de boias<br>
      e atraque os 3 navios no porto!</p>
   <p style="opacity:.6;font-size:11px">📱 Joystick esquerdo · Botão AÇÃO (direito) &nbsp;|&nbsp; 🖥️ WASD/Setas · Espaço</p>
   <button id="btn-start">ZARPAR ⚓</button>
+  <div class="credit">TugLife Games · por <b>Jossian Brito</b> · 2026</div>
 </div>
 <script>
 'use strict';
@@ -1372,6 +1449,22 @@ function startGame(){
   buildWorld();
 }
 document.getElementById('btn-start').addEventListener('click',startGame);
+
+// ─── Splash → Menu ──────────────────────────────────────────────────────────
+function dismissSplash(){
+  const sp=document.getElementById('splash');
+  if(!sp||sp.classList.contains('out'))return;
+  sp.classList.add('out');
+  setTimeout(()=>{
+    sp.style.display='none';
+    document.getElementById('overlay').style.display='flex';
+  },650);
+}
+const splashEl=document.getElementById('splash');
+splashEl.addEventListener('click',dismissSplash);
+splashEl.addEventListener('touchstart',e=>{e.preventDefault();dismissSplash();},{passive:false});
+setTimeout(dismissSplash,3200); // auto-avança após 3.2s
+
 requestAnimationFrame(loop);
 </script>
 </body>
