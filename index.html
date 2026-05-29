@@ -477,47 +477,70 @@ function updateCrates(){
   }
 }
 
+// Posto de combustível: referência ao coletável sendo abastecido
+let fuelStation=null; // {c, progress} quando encostado
+
 function updateCollectibles(){
+  fuelStation=null;
   for(const c of collectibles){
     if(c.collected)continue;
-    if(Math.hypot(tug.x-c.x,tug.y-c.y)<28){
+    const dist=Math.hypot(tug.x-c.x,tug.y-c.y);
+    if(c.type==='fuel'){
+      if(dist<36){
+        // Abastece gradualmente enquanto encostado
+        fuelStation={c,progress:fuel};
+        const rate=0.006;
+        fuel=Math.min(1,fuel+rate);
+        if(fuel>=1){
+          c.collected=true; fuelStation=null;
+          spawnP(c.x,c.y,'#ff9922',14);
+          showMsg('⛽ Tanque cheio!');
+        }
+      }
+    } else if(dist<28){
       c.collected=true;
-      spawnP(c.x,c.y,{wrench:'#88ff44',fuel:'#ff9922',key:'#ffdd00'}[c.type],14);
+      spawnP(c.x,c.y,{wrench:'#88ff44',key:'#ffdd00'}[c.type],14);
       if(c.type==='wrench'){maintenance=Math.min(1,maintenance+0.55);showMsg('🔧 Manutenção +55%');}
-      else if(c.type==='fuel'){fuel=Math.min(1,fuel+0.65);showMsg('⛽ Combustível +65%');}
       else{bridge.locked=false;showMsg('🗝️ Ponte desbloqueada!');}
     }
   }
 }
 
-// Trapézio: abre (0→1), mantém aberto, fecha (1→0), mantém fechado
+// Trapézio de ciclo: 0=fechado → 1=aberto
 function bridgeCycle(t,P){
   const p=(t%P)/P;
-  if(p<0.16) return p/0.16;            // abrindo
-  if(p<0.46) return 1;                  // aberto (janela de passagem)
-  if(p<0.62) return 1-(p-0.46)/0.16;    // fechando
-  return 0;                             // fechado
+  if(p<0.16) return p/0.16;
+  if(p<0.46) return 1;
+  if(p<0.62) return 1-(p-0.46)/0.16;
+  return 0;
 }
 
+// Ponte BIPARTIDA:
+//   portão superior: parte do centro (cY) e sobe para y=0   ao abrir
+//   portão inferior: parte do centro (cY) e desce para y=H  ao abrir
+// gateTop(o)  = borda inferior do portão superior  = cY*(1-o)
+// gateBot(o)  = borda superior do portão inferior  = cY + (H-cY)*o
+function bridgeGateTop(o){ return H/2*(1-o); }
+function bridgeGateBot(o){ return H/2+(H-H/2)*o; }
+
 function applyBridgeCollision(){
-  const cY=H/2, gW=22;
-  // Geometria: openAmt=0 → portões se encontram no centro (vedado); openAmt=1 → totalmente abertos
-  const channelTop=cY*(1-bridge.openAmt);
-  const channelBot=cY+(H-cY)*bridge.openAmt;
-  const channelH=channelBot-channelTop;
+  const gW=22, o=bridge.openAmt;
+  const gTop=bridgeGateTop(o);  // borda inferior do portão de cima
+  const gBot=bridgeGateBot(o);  // borda superior do portão de baixo
+  const passageH=gBot-gTop;     // vão livre entre os dois portões
   const inXspan=Math.abs(tug.x-bridge.x)<tug.len/2+gW/2;
 
   if(inXspan){
-    // Esmagamento: rebocador dentro do vão e a abertura ficou menor que ele
-    if(!bridge.locked && channelH<tug.wid*1.6 && tug.x>bridge.x-tug.len/2){
+    // Esmagamento pelos portões
+    if(!bridge.locked && passageH<tug.wid*1.5 && tug.x>bridge.x-tug.len/2){
       loseLife('bridge'); return;
     }
-    // Portões empurram o rebocador para dentro do canal aberto
-    if(tug.y<channelTop){ tug.y=channelTop+tug.wid*0.6; tug.vy=Math.abs(tug.vy)*0.4; }
-    else if(tug.y>channelBot){ tug.y=channelBot-tug.wid*0.6; tug.vy=-Math.abs(tug.vy)*0.4; }
+    // Portões empurram o rebocador para o vão livre
+    if(tug.y<gTop){ tug.y=gTop+tug.wid*0.6; tug.vy= Math.abs(tug.vy)*0.4; }
+    else if(tug.y>gBot){ tug.y=gBot-tug.wid*0.6; tug.vy=-Math.abs(tug.vy)*0.4; }
   }
-  // Bloqueia a passagem enquanto travada ou pouco aberta (sem ter ainda cruzado o centro)
-  if((bridge.locked||channelH<tug.wid*2.2) && tug.x>bridge.x-tug.len/2-5 && tug.x<bridge.x){
+  // Bloqueia enquanto trancada ou vão muito estreito para passar
+  if((bridge.locked||passageH<tug.wid*2.0) && tug.x>bridge.x-tug.len/2-5 && tug.x<bridge.x){
     tug.x=bridge.x-tug.len/2-5; tug.vx=-Math.abs(tug.vx)*0.5;
     if(bridge.locked) showMsg('🔒 Precisa da chave!');
   }
@@ -641,6 +664,7 @@ function draw(){
   drawShipSprite();
   drawTugSprite();
   drawParticles();
+  drawFuelStationBar();
   ctx.restore();
   // Screen-fixed UI
   drawHUD();
@@ -727,52 +751,67 @@ function drawChannelDeco(){
 }
 
 function drawBridge(){
-  const bx=bridge.x, cY=H/2;
-  const topBot=cY*(1-bridge.openAmt);
-  const botTop=cY+(H-cY)*bridge.openAmt;
-  const gW=22;
+  const bx=bridge.x, o=bridge.openAmt;
+  const gTop=bridgeGateTop(o); // borda inferior do portão superior
+  const gBot=bridgeGateBot(o); // borda superior do portão inferior
+  const gW=24;
 
-  function drawGate(y0,h){
-    if(h<=0)return;
+  function drawGate(y0,h,flipStripe){
+    if(h<0.5)return;
+    // Corpo metálico com gradiente horizontal
     const gg=ctx.createLinearGradient(bx-gW/2,0,bx+gW/2,0);
-    gg.addColorStop(0,'#445566'); gg.addColorStop(0.5,'#6a7d8e'); gg.addColorStop(1,'#445566');
+    gg.addColorStop(0,'#334455'); gg.addColorStop(0.45,'#6a7d8e'); gg.addColorStop(1,'#334455');
     ctx.fillStyle=gg; ctx.fillRect(bx-gW/2,y0,gW,h);
-    ctx.strokeStyle='#334455'; ctx.lineWidth=1.5;
-    for(let y=y0+8;y<y0+h;y+=16){ctx.beginPath();ctx.moveTo(bx-gW/2,y);ctx.lineTo(bx+gW/2,y);ctx.stroke();}
-    // Hazard stripe (8px band at gate edge)
-    const sy=y0===0?y0+h-8:y0;
+    // Vigas horizontais
+    ctx.strokeStyle='rgba(0,0,0,.25)'; ctx.lineWidth=1.5;
+    for(let yy=y0+10;yy<y0+h;yy+=14){
+      ctx.beginPath(); ctx.moveTo(bx-gW/2,yy); ctx.lineTo(bx+gW/2,yy); ctx.stroke();
+    }
+    // Brilho lateral
+    ctx.fillStyle='rgba(255,255,255,.07)'; ctx.fillRect(bx-gW/2,y0,3,h);
+    // Faixa de perigo na borda interna (lado do vão)
+    const sy=flipStripe?y0:y0+h-8;
+    ctx.save();
     for(let i=0;i<gW;i+=8){
-      ctx.fillStyle=i%16<8?'#ffcc00':'#cc0000';
+      ctx.fillStyle=i%16<8?'#ffcc00':'#cc2200';
       ctx.fillRect(bx-gW/2+i,sy,8,8);
     }
+    // borda preta separando faixa
+    ctx.strokeStyle='rgba(0,0,0,.45)'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(bx-gW/2,flipStripe?sy+8:sy); ctx.lineTo(bx+gW/2,flipStripe?sy+8:sy); ctx.stroke();
+    ctx.restore();
   }
-  drawGate(0,topBot);
-  drawGate(botTop,H-botTop);
+  // Portão SUPERIOR: vai de y=0 até gTop (abre para cima)
+  drawGate(0, gTop, false);
+  // Portão INFERIOR: vai de gBot até y=H (abre para baixo)
+  drawGate(gBot, H-gBot, true);
 
-  // Rails
-  ctx.fillStyle='#667788';
-  ctx.fillRect(bx-gW/2-5,0,5,H);
-  ctx.fillRect(bx+gW/2,    0,5,H);
+  // Trilhos laterais (guias dos portões)
+  ctx.fillStyle='#556677';
+  ctx.fillRect(bx-gW/2-6,0,6,H);
+  ctx.fillRect(bx+gW/2,   0,6,H);
+  // Destaque luminoso nos trilhos
+  ctx.fillStyle='rgba(0,160,255,.18)'; ctx.fillRect(bx-gW/2-6,0,2,H);
+  ctx.fillStyle='rgba(0,160,255,.18)'; ctx.fillRect(bx+gW/2+4,0,2,H);
 
-  // Ícone / estado da ponte
+  // Semáforo e estado
   const now=Date.now();
   ctx.textAlign='center'; ctx.textBaseline='middle';
   if(bridge.locked){
     ctx.save();
-    ctx.shadowBlur=20; ctx.shadowColor=`rgba(255,50,50,${0.5+0.4*Math.sin(now*.006)})`;
-    ctx.font='22px sans-serif'; ctx.fillText('🔒',bx,40);
+    ctx.shadowBlur=22; ctx.shadowColor=`rgba(255,50,50,${0.4+0.5*Math.sin(now*.006)})`;
+    ctx.font='22px sans-serif'; ctx.fillText('🔒',bx,34);
     ctx.restore();
   } else {
-    // Semáforo: verde = aberto/passável, vermelho = fechando/fechado
-    const open=bridge.openAmt>0.45;
+    const open=o>0.45;
     ctx.save();
     ctx.shadowBlur=14; ctx.shadowColor=open?'#00ff66':`rgba(255,40,40,${0.5+0.5*Math.sin(now*.02)})`;
-    ctx.beginPath(); ctx.arc(bx,40,8,0,Math.PI*2);
+    ctx.beginPath(); ctx.arc(bx,34,8,0,Math.PI*2);
     ctx.fillStyle=open?'#00ee55':'#ff2222'; ctx.fill();
     ctx.restore();
     if(!open){
-      ctx.fillStyle='rgba(255,80,80,.9)'; ctx.font='bold 11px sans-serif';
-      ctx.fillText('⚠ FECHANDO',bx,60);
+      ctx.fillStyle='rgba(255,100,100,.9)'; ctx.font='bold 11px monospace';
+      ctx.fillText('⚠ FECHANDO',bx,54);
     }
   }
 }
@@ -867,6 +906,43 @@ function drawCrates(){
     ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('▢▢▢',0,0);
     ctx.restore();
   }
+}
+
+// Barra flutuante de abastecimento (desenhada em world-space, sobre o posto)
+function drawFuelStationBar(){
+  if(!fuelStation) return;
+  const c=fuelStation.c;
+  const bw=72, bh=14, bx=c.x-bw/2, by=c.y-42;
+  // fundo
+  ctx.save();
+  ctx.beginPath(); ctx.roundRect(bx-2,by-2,bw+4,bh+4,6);
+  ctx.fillStyle='rgba(0,0,0,.65)'; ctx.fill();
+  // pista vazia
+  ctx.beginPath(); ctx.roundRect(bx,by,bw,bh,4);
+  ctx.fillStyle='rgba(40,20,0,.8)'; ctx.fill();
+  // progresso
+  const fw=bw*fuel;
+  if(fw>1){
+    ctx.beginPath(); ctx.roundRect(bx,by,fw,bh,4);
+    const g=ctx.createLinearGradient(bx,0,bx+bw,0);
+    g.addColorStop(0,'#ff6600'); g.addColorStop(0.5,'#ffaa00'); g.addColorStop(1,'#ffdd44');
+    ctx.fillStyle=g; ctx.fill();
+    // brilho
+    ctx.beginPath(); ctx.roundRect(bx,by,fw,bh/2,[4,4,0,0]);
+    ctx.fillStyle='rgba(255,255,255,.22)'; ctx.fill();
+  }
+  // borda
+  ctx.beginPath(); ctx.roundRect(bx,by,bw,bh,4);
+  ctx.strokeStyle='#ff9900'; ctx.lineWidth=1.5; ctx.stroke();
+  // ícone e texto
+  ctx.fillStyle='#ffcc44'; ctx.font='bold 10px monospace';
+  ctx.textAlign='center'; ctx.textBaseline='bottom';
+  ctx.fillText(`⛽ ${Math.round(fuel*100)}%`,c.x,by-2);
+  // seta de conexão: linha pontilhada do posto ao rebocador
+  ctx.strokeStyle='rgba(255,180,0,.5)'; ctx.lineWidth=1.5; ctx.setLineDash([4,4]);
+  ctx.beginPath(); ctx.moveTo(c.x,c.y); ctx.lineTo(tug.x,tug.y); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
 }
 
 function drawCollectibles(){
