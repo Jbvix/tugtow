@@ -261,7 +261,73 @@ let vessels, collectibles, bridge, crates;
 let portX, quayBackX, basinX, berthHG, berthSpacingG, berthStartYG;
 let particles=[], wakes=[];
 let msgText='', msgTimer=0;
-let connectBtnRect=null, restartBtnRect=null, exitBtnRect=null;
+let connectBtnRect=null, restartBtnRect=null, exitBtnRect=null, muteBtnRect=null;
+
+// ─── Áudio chiptune (Web Audio API, procedural) ─────────────────────────────
+const audio={ctx:null,master:null,music:null,sfx:null,on:true,timer:null,step:0,nextTime:0};
+const STEP_DUR=0.125;
+// Melodia (32 passos) e baixo — Lá menor / Dó maior, alegre de fliperama
+const LEAD=[76,null,79,81, 84,81,79,76, 74,null,77,79, 81,79,77,74,
+            76,null,79,81, 84,86,84,81, 79,77,76,74, 72,null,72,74];
+const BASS=[45,45,52,52, 50,50,48,48]; // 1 nota a cada 4 passos
+const midi=m=>440*Math.pow(2,(m-69)/12);
+
+function initAudio(){
+  if(audio.ctx)return;
+  const AC=window.AudioContext||window.webkitAudioContext;
+  if(!AC)return;
+  audio.ctx=new AC();
+  audio.master=audio.ctx.createGain(); audio.master.gain.value=audio.on?0.5:0; audio.master.connect(audio.ctx.destination);
+  audio.music=audio.ctx.createGain();  audio.music.gain.value=0.32; audio.music.connect(audio.master);
+  audio.sfx=audio.ctx.createGain();    audio.sfx.gain.value=0.5;  audio.sfx.connect(audio.master);
+}
+function blip(freq,start,dur,type,gain,dest){
+  const o=audio.ctx.createOscillator(); o.type=type; o.frequency.value=freq;
+  const g=audio.ctx.createGain();
+  g.gain.setValueAtTime(0.0001,start);
+  g.gain.linearRampToValueAtTime(gain,start+0.008);
+  g.gain.exponentialRampToValueAtTime(0.0001,start+dur);
+  o.connect(g); g.connect(dest);
+  o.start(start); o.stop(start+dur+0.02);
+}
+function musicScheduler(){
+  if(!audio.ctx)return;
+  while(audio.nextTime<audio.ctx.currentTime+0.2){
+    const s=audio.step%32;
+    const ln=LEAD[s];
+    if(ln) blip(midi(ln),audio.nextTime,STEP_DUR*0.92,'square',0.16,audio.music);
+    if(s%4===0) blip(midi(BASS[Math.floor(s/4)%BASS.length]),audio.nextTime,STEP_DUR*3,'triangle',0.22,audio.music);
+    if(s%4===2) blip(midi(88),audio.nextTime,0.025,'square',0.05,audio.music); // tick
+    audio.nextTime+=STEP_DUR; audio.step++;
+  }
+}
+function startMusic(){
+  initAudio(); if(!audio.ctx)return;
+  if(audio.ctx.state==='suspended') audio.ctx.resume();
+  audio.step=0; audio.nextTime=audio.ctx.currentTime+0.12;
+  if(audio.timer)clearInterval(audio.timer);
+  audio.timer=setInterval(musicScheduler,40);
+}
+function stopMusic(){ if(audio.timer){clearInterval(audio.timer);audio.timer=null;} }
+function toggleMute(){
+  audio.on=!audio.on;
+  if(audio.master) audio.master.gain.value=audio.on?0.5:0;
+  if(audio.on&&audio.ctx&&audio.ctx.state==='suspended') audio.ctx.resume();
+}
+function sfx(type){
+  if(!audio.ctx||!audio.on)return;
+  const t=audio.ctx.currentTime;
+  if(type==='collect'){ blip(midi(84),t,0.07,'square',0.28,audio.sfx); blip(midi(91),t+0.07,0.1,'square',0.28,audio.sfx); }
+  else if(type==='collide'){
+    const o=audio.ctx.createOscillator(); o.type='sawtooth';
+    o.frequency.setValueAtTime(220,t); o.frequency.exponentialRampToValueAtTime(55,t+0.3);
+    const g=audio.ctx.createGain(); g.gain.setValueAtTime(0.3,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.3);
+    o.connect(g); g.connect(audio.sfx); o.start(t); o.stop(t+0.32);
+  }
+  else if(type==='dock'){ [72,76,79,84].forEach((n,i)=>blip(midi(n),t+i*0.09,0.16,'square',0.28,audio.sfx)); }
+  else if(type==='bridge'){ blip(midi(60),t,0.14,'triangle',0.24,audio.sfx); blip(midi(67),t+0.07,0.14,'triangle',0.2,audio.sfx); }
+  else if(type==='key'){ blip(midi(88),t,0.06,'square',0.26,audio.sfx); blip(midi(93),t+0.06,0.12,'square',0.26,audio.sfx); }
+}
 
 // ─── Input ────────────────────────────────────────────────────────────────────
 const keys={};
@@ -275,6 +341,7 @@ canvas.addEventListener('mousedown', e=>{if(handleTopButtons(e.clientX,e.clientY
 
 function handleTopButtons(x,y){
   if(gameState!=='playing')return false;
+  if(muteBtnRect&&inR(x,y,muteBtnRect)){ toggleMute(); return true; }
   if(restartBtnRect&&inR(x,y,restartBtnRect)){ startGame(); return true; }
   if(exitBtnRect&&inR(x,y,exitBtnRect)){ exitToMenu(); return true; }
   return false;
@@ -543,7 +610,7 @@ function updateCrates(){
       maintenance=Math.max(0,maintenance-0.22);
       const ang=Math.atan2(tug.y-c.y,tug.x-c.x);
       tug.vx+=Math.cos(ang)*1.6; tug.vy+=Math.sin(ang)*1.6;
-      spawnP(c.x,c.y,'#cc8844',14);
+      spawnP(c.x,c.y,'#cc8844',14); sfx('collide');
       showMsg('📦 Avaria! Manutenção -22%');
       setTimeout(()=>{
         c.hit=false;
@@ -570,15 +637,15 @@ function updateCollectibles(){
         fuel=Math.min(1,fuel+rate);
         if(fuel>=1){
           c.collected=true; fuelStation=null;
-          spawnP(c.x,c.y,'#ff9922',14);
+          spawnP(c.x,c.y,'#ff9922',14); sfx('collect');
           showMsg('⛽ Tanque cheio!');
         }
       }
     } else if(dist<28){
       c.collected=true;
       spawnP(c.x,c.y,{wrench:'#88ff44',key:'#ffdd00'}[c.type],14);
-      if(c.type==='wrench'){maintenance=Math.min(1,maintenance+0.55);showMsg('🔧 Manutenção +55%');}
-      else{bridge.locked=false;showMsg('🗝️ Ponte desbloqueada!');}
+      if(c.type==='wrench'){maintenance=Math.min(1,maintenance+0.55);showMsg('🔧 Manutenção +55%');sfx('collect');}
+      else{bridge.locked=false;showMsg('🗝️ Ponte desbloqueada!');sfx('key');}
     }
   }
 }
@@ -701,6 +768,7 @@ function dockSuccess(berth){
   const mBonus=Math.round(maintenance*120), fBonus=Math.round(fuel*80);
   score+=500+tBonus+mBonus+fBonus;
   spawnP(ship.x,ship.y,'#ffd700',32); spawnP(ship.x,ship.y,'#00ffcc',20);
+  sfx('dock');
   showMsg('✅ Atracado! +'+( 500+tBonus+mBonus+fBonus)+' pts');
   if(mission+1>=3) setTimeout(showVictory,1600);
   else setTimeout(()=>{mission++;buildWorld();},2200);
@@ -710,6 +778,7 @@ function loseLife(reason){
   if(invTimer>0)return;
   lives--;
   spawnP(tug.x,tug.y,'#ff3300',22);
+  sfx(reason==='bridge'?'bridge':'collide');
   const base=reason==='fuel'?'⛽ Sem combustível!':
              reason==='bridge'?'🌉 Esmagado pela ponte!':'💥 Colisão!';
   if(lives<=0){
@@ -1266,9 +1335,10 @@ function drawHUD(){
 function drawTopButtons(){
   const bs=34, gap=8;
   // posiciona abaixo do HUD, no canto direito
-  const y=58, x2=W-bs-12, x1=x2-bs-gap;
-  restartBtnRect={x:x1,y,w:bs,h:bs};
-  exitBtnRect   ={x:x2,y,w:bs,h:bs};
+  const y=58, x3=W-bs-12, x2=x3-bs-gap, x1=x2-bs-gap;
+  muteBtnRect   ={x:x1,y,w:bs,h:bs};
+  restartBtnRect={x:x2,y,w:bs,h:bs};
+  exitBtnRect   ={x:x3,y,w:bs,h:bs};
   function btn(r,icon,col){
     ctx.save();
     ctx.beginPath(); ctx.roundRect(r.x,r.y,r.w,r.h,9);
@@ -1279,6 +1349,7 @@ function drawTopButtons(){
     ctx.fillText(icon,r.x+r.w/2,r.y+r.h/2+1);
     ctx.restore();
   }
+  btn(muteBtnRect,audio.on?'🔊':'🔇',audio.on?'#88ddff':'#ff9966');
   btn(restartBtnRect,'↻','#7df4ff');
   btn(exitBtnRect,'⏏','#ff7766');
 }
@@ -1452,6 +1523,7 @@ function startGame(){
   gameState='playing'; lives=MAX_LIVES; fuel=1; maintenance=1; score=0; mission=0; gameTime=0;
   document.getElementById('overlay').style.display='none';
   buildWorld();
+  startMusic();
 }
 document.getElementById('btn-start').addEventListener('click',startGame);
 
