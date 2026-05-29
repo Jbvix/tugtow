@@ -469,11 +469,17 @@ function update(dt) {
     ship.angVel *= SHIP_ANGDRAG;
     ship.x += ship.vx; ship.y += ship.vy; ship.angle += ship.angVel;
     applyShipWalls();
-    const tb = targetBerth;
-    if (Math.hypot(ship.x-(tb.x+tb.w/2), ship.y-(tb.y+tb.h/2)) < DOCK_DIST) dockedSuccess();
+    // Check docking against ANY berth (not just target)
+    for (const b of berths) {
+      if (!b.docked && Math.hypot(ship.x-(b.x+b.w/2), ship.y-(b.y+b.h/2)) < DOCK_DIST) {
+        dockedSuccess(b); break;
+      }
+    }
   }
 
+  // Buoy collision: always active for ship; also always for tug
   if (phase === 'towing' || phase === 'pushing') checkBuoys();
+  checkTugBuoys();
 
   for (let i = particles.length-1; i >= 0; i--) {
     const p = particles[i];
@@ -563,7 +569,7 @@ function applyTugWalls() {
   }
 }
 
-// Collision: ship vs quay back wall and pier walls (between berths)
+// Collision: ship vs quay face, back wall and pier walls (between berths)
 function applyShipWalls() {
   const hl = ship.len / 2, hw = ship.wid / 2;
   // Screen bounds
@@ -574,17 +580,22 @@ function applyShipWalls() {
   if (ship.x + hl > quayBackX) {
     ship.x = quayBackX - hl; ship.vx = -Math.abs(ship.vx) * 0.35; ship.angVel *= 0.5;
   }
-  // Pier walls when ship crosses into port area
+
+  // Quay FACE: ship can only cross portX when aligned with any berth opening
   if (ship.x + hl > portX) {
-    for (const [y1, y2] of getPiers()) {
-      const pierH = y2 - y1;
-      if (pierH < 4) continue; // skip near-zero gaps
-      // Check if ship center is inside pier band
-      if (ship.y > y1 && ship.y < y2) {
-        const mid = (y1 + y2) / 2;
-        if (ship.y < mid) { ship.y = y1 - hw - 2; }
-        else              { ship.y = y2 + hw + 2; }
-        ship.vy *= -0.35; ship.angVel *= 0.5;
+    const inBerth = berths.some(b => ship.y >= b.y + hw && ship.y <= b.y + b.h - hw);
+    if (!inBerth) {
+      ship.x = portX - hl; ship.vx = -Math.abs(ship.vx) * 0.35; ship.angVel *= 0.5;
+    } else {
+      // Inside a berth: block pier walls top/bottom
+      for (const [y1, y2] of getPiers()) {
+        if (y2 - y1 < 4) continue;
+        if (ship.y > y1 && ship.y < y2) {
+          const mid = (y1 + y2) / 2;
+          if (ship.y < mid) { ship.y = y1 - hw - 2; }
+          else              { ship.y = y2 + hw + 2; }
+          ship.vy *= -0.35; ship.angVel *= 0.5;
+        }
       }
     }
   }
@@ -604,15 +615,30 @@ function closestPointOnShip(px, py) {
   return { x: ship.x + cx*ca - cy*sa, y: ship.y + cx*sa + cy*ca };
 }
 
-function dockedSuccess() {
+function dockedSuccess(berth) {
   if (phase === 'docked') return;
-  phase = 'docked'; targetBerth.docked = true;
+  phase = 'docked';
+  berth.docked = true;
+  targetBerth = berth; // update target for label/UI
   score += Math.max(0, 500 + Math.floor(300 - levelTime/1000*5) - buoyHits*PENALTY);
   spawnParticles(ship.x, ship.y, '#ffd700', 32);
   spawnParticles(ship.x, ship.y, '#00ffcc', 20);
   updateUI();
   if (mission + 1 >= totalMissions) setTimeout(showVictory, 1400);
   else setTimeout(() => { mission++; buildLevel(); }, 2000);
+}
+
+// Tug vs buoy collision (always, any phase)
+function checkTugBuoys() {
+  const tr = tug.len / 2;
+  for (const b of buoys) {
+    if (b.hit) continue;
+    if (Math.hypot(tug.x - b.x, tug.y - b.y) < tr + b.r) {
+      b.hit = true; buoyHits++;
+      score = Math.max(0, score - PENALTY);
+      spawnParticles(b.x, b.y, '#ff8800', 8); updateUI();
+    }
+  }
 }
 
 // ─── Render ───────────────────────────────────────────────────────────────────
