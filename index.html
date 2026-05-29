@@ -8,81 +8,47 @@
   * { margin: 0; padding: 0; box-sizing: border-box; touch-action: none; }
   body {
     background: #001a2e;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    height: 100dvh;
-    overflow: hidden;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    height: 100dvh; overflow: hidden;
     font-family: 'Segoe UI', sans-serif;
   }
   #ui {
-    position: fixed;
-    top: 0; left: 0; right: 0;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
+    position: fixed; top: 0; left: 0; right: 0;
+    display: flex; justify-content: space-between; align-items: center;
     padding: 8px 14px;
     background: linear-gradient(180deg,rgba(0,0,0,.55) 0%,transparent 100%);
-    z-index: 10;
-    pointer-events: none;
+    z-index: 10; pointer-events: none;
   }
   #ui .pill {
     background: rgba(0,30,60,.7);
     border: 1px solid rgba(0,180,255,.35);
-    border-radius: 20px;
-    padding: 4px 12px;
-    color: #7df4ff;
-    font-size: 13px;
-    font-weight: 600;
-    pointer-events: none;
+    border-radius: 20px; padding: 4px 12px;
+    color: #7df4ff; font-size: 13px; font-weight: 600;
   }
   canvas { display: block; touch-action: none; }
   #overlay {
     position: fixed; inset: 0;
-    background: rgba(0,10,25,.88);
+    background: rgba(0,10,25,.92);
     display: flex; flex-direction: column;
     align-items: center; justify-content: center;
-    z-index: 20; gap: 18px;
+    z-index: 20; gap: 16px;
   }
-  #overlay h1 {
-    color: #7df4ff;
-    font-size: clamp(26px,6vw,42px);
-    text-shadow: 0 0 20px #00cfff;
-    letter-spacing: 2px;
-  }
-  #overlay p {
-    color: #aaddee;
-    font-size: clamp(12px,3vw,15px);
-    text-align: center;
-    max-width: 340px;
-    line-height: 1.6;
-  }
+  #overlay h1 { color:#7df4ff; font-size:clamp(28px,7vw,46px); text-shadow:0 0 22px #00cfff; letter-spacing:3px; }
+  #overlay h2 { color:#00cfff; font-size:clamp(14px,3.5vw,20px); }
+  #overlay p  { color:#aaddee; font-size:clamp(12px,2.8vw,14px); text-align:center; max-width:360px; line-height:1.7; }
   #overlay button {
-    margin-top: 10px;
-    padding: 14px 44px;
-    font-size: 17px;
-    font-weight: 700;
-    background: linear-gradient(135deg,#0077aa,#00cfff);
-    color: #fff;
-    border: none; border-radius: 30px;
-    cursor: pointer;
-    box-shadow: 0 0 24px #00cfff88;
-    letter-spacing: 1px;
+    margin-top:8px; padding:14px 48px; font-size:17px; font-weight:700;
+    background:linear-gradient(135deg,#0077aa,#00cfff); color:#fff;
+    border:none; border-radius:30px; cursor:pointer;
+    box-shadow:0 0 26px #00cfff88; letter-spacing:1px;
   }
-  #overlay button:active { transform: scale(.97); }
-  #joystick-zone {
-    position: fixed; bottom: 20px; left: 20px;
-    width: 110px; height: 110px;
-    z-index: 10; pointer-events: none;
-  }
+  #overlay button:active { transform:scale(.97); }
   #hint {
-    position: fixed; bottom: 14px; right: 14px;
-    color: rgba(120,220,255,.65);
-    font-size: 11px;
-    z-index: 10;
-    text-align: right;
-    pointer-events: none;
+    position:fixed; bottom:14px; right:14px;
+    color:rgba(120,220,255,.7); font-size:11px;
+    z-index:10; text-align:right; pointer-events:none;
+    text-shadow: 0 1px 4px rgba(0,0,0,.8);
   }
 </style>
 </head>
@@ -95,23 +61,17 @@
 </div>
 
 <canvas id="c"></canvas>
+<div id="hint">Toque para mover</div>
 
-<div id="joystick-zone">
-  <canvas id="jc" width="110" height="110"></canvas>
-</div>
-<div id="hint">Toque para mover<br>Aproxime e conecte o navio</div>
-
-<div id="overlay" id="overlay">
+<div id="overlay">
   <h1>⚓ PAW</h1>
-  <h2 style="color:#00cfff;font-size:18px">Desafio de Reboque</h2>
-  <p>
-    Pilote o rebocador, conecte o cabo na proa do navio,<br>
-    conduza pelo corredor de boias até o cais<br>
-    e atraque o navio sem bater nas boias!
-  </p>
-  <p style="font-size:11px;opacity:.7">
-    📱 Joystick virtual (esquerda) · Botão CONECTAR (direita)<br>
-    🖥️ WASD / Setas · Espaço = conectar/desconectar
+  <h2>Desafio de Reboque</h2>
+  <p>Pilote o rebocador · conecte o cabo na proa do navio<br>
+     conduza pelo corredor de boias até o cais<br>
+     e atraque sem bater nas boias!</p>
+  <p style="font-size:11px;opacity:.65">
+    📱 Joystick virtual (esq.) · Botão AÇÃO (dir.)<br>
+    🖥️ WASD / Setas · Espaço = conectar/soltar
   </p>
   <button id="btn-start">ZARPAR ⚓</button>
 </div>
@@ -119,911 +79,859 @@
 <script>
 'use strict';
 
-// ─── Canvas setup ───────────────────────────────────────────────────────────
+// ─── Canvas ──────────────────────────────────────────────────────────────────
 const canvas = document.getElementById('c');
 const ctx    = canvas.getContext('2d');
-const jCanvas = document.getElementById('jc');
-const jCtx   = jCanvas.getContext('2d');
-
-function resize() {
-  canvas.width  = window.innerWidth;
-  canvas.height = window.innerHeight;
-}
+function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
 resize();
 window.addEventListener('resize', () => { resize(); buildLevel(); });
 
-// ─── Constants ──────────────────────────────────────────────────────────────
-const TUG_SPEED     = 3.2;
-const TUG_TURN      = 0.045;
-const CABLE_LEN     = 72;
-const CABLE_STIFF   = 0.06;
-const SHIP_DRAG     = 0.97;
-const SHIP_ANGDRAG  = 0.94;
-const CONNECT_DIST  = 45;
-const DOCK_DIST     = 38;
-const PUSH_FORCE    = 0.18;
-const BUOY_R        = 10;
-const PENALTY       = 80;
+// ─── SVG Sprites ─────────────────────────────────────────────────────────────
+function svgImg(svgStr) {
+  const img = new Image();
+  img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgStr);
+  return img;
+}
 
-// ─── State ──────────────────────────────────────────────────────────────────
+// Tugboat — 96×44px, bow → right
+const tugSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 44">
+  <!-- Hull shadow -->
+  <path d="M92,22 L82,5 L10,5 L3,12 L3,32 L10,39 L82,39 Z" fill="#1a0000" opacity="0.35" transform="translate(2,2)"/>
+  <!-- Main hull -->
+  <path d="M92,22 L82,5 L10,5 L3,12 L3,32 L10,39 L82,39 Z" fill="#b82020"/>
+  <!-- Hull sheen -->
+  <path d="M88,22 L79,7 L12,7 L5,13" fill="none" stroke="rgba(255,180,180,0.25)" stroke-width="2"/>
+  <!-- Deck plate -->
+  <rect x="10" y="8" width="70" height="28" rx="3" fill="#cc2828"/>
+  <!-- Bow fender (orange rubber bumper) -->
+  <path d="M90,22 L80,10 L80,34 Z" fill="#ff7700" stroke="#cc5500" stroke-width="1"/>
+  <ellipse cx="80" cy="22" rx="3" ry="12" fill="#ff9933" opacity="0.7"/>
+  <!-- Side fenders port -->
+  <rect x="22" y="5" width="8" height="4" rx="2" fill="#ff8800"/>
+  <rect x="42" y="5" width="8" height="4" rx="2" fill="#ff8800"/>
+  <rect x="62" y="5" width="8" height="4" rx="2" fill="#ff8800"/>
+  <!-- Side fenders starboard -->
+  <rect x="22" y="35" width="8" height="4" rx="2" fill="#ff8800"/>
+  <rect x="42" y="35" width="8" height="4" rx="2" fill="#ff8800"/>
+  <rect x="62" y="35" width="8" height="4" rx="2" fill="#ff8800"/>
+  <!-- Cabin structure -->
+  <rect x="30" y="10" width="28" height="24" rx="3" fill="#f0d878" stroke="#c8aa44" stroke-width="1.5"/>
+  <!-- Cabin roof detail -->
+  <rect x="32" y="10" width="24" height="4" rx="1" fill="#d8c060"/>
+  <!-- Bridge windows (front facing = top of svg for top-down = port side) -->
+  <rect x="32" y="14" width="9" height="6" rx="1.5" fill="#99ddff" stroke="#66aacc" stroke-width="0.5"/>
+  <rect x="47" y="14" width="9" height="6" rx="1.5" fill="#99ddff" stroke="#66aacc" stroke-width="0.5"/>
+  <rect x="32" y="23" width="9" height="6" rx="1.5" fill="#99ddff" stroke="#66aacc" stroke-width="0.5"/>
+  <rect x="47" y="23" width="9" height="6" rx="1.5" fill="#99ddff" stroke="#66aacc" stroke-width="0.5"/>
+  <!-- Exhaust stacks (twin) -->
+  <rect x="14" y="10" width="7" height="11" rx="2" fill="#222"/>
+  <rect x="14" y="23" width="7" height="11" rx="2" fill="#222"/>
+  <rect x="14" y="10" width="7" height="3" rx="1" fill="#444"/>
+  <rect x="14" y="23" width="7" height="3" rx="1" fill="#444"/>
+  <!-- Towing bitt (stern) -->
+  <circle cx="6" cy="22" r="4" fill="#666" stroke="#333" stroke-width="1.5"/>
+  <circle cx="6" cy="22" r="2" fill="#888"/>
+  <!-- Towing hook bow -->
+  <circle cx="85" cy="22" r="3" fill="#555" stroke="#333" stroke-width="1"/>
+  <!-- Nav lights -->
+  <circle cx="77" cy="9"  r="2.5" fill="#00ff44" opacity="0.9"/>
+  <circle cx="77" cy="35" r="2.5" fill="#ff2222" opacity="0.9"/>
+  <!-- Masthead light -->
+  <circle cx="48" cy="16" r="2" fill="#ffffff" opacity="0.95"/>
+  <!-- Deck cleats -->
+  <rect x="68" y="11" width="5" height="3" rx="1" fill="#555"/>
+  <rect x="68" y="30" width="5" height="3" rx="1" fill="#555"/>
+  <!-- Company stripe on funnel -->
+  <rect x="14" y="14" width="7" height="3" fill="#ff6600" opacity="0.9"/>
+  <rect x="14" y="27" width="7" height="3" fill="#ff6600" opacity="0.9"/>
+  <!-- Waterline reflection -->
+  <ellipse cx="48" cy="40" rx="38" ry="4" fill="rgba(0,100,200,0.18)"/>
+</svg>`;
+
+// Cargo Ship — 200×52px, bow → right
+const shipSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 52">
+  <!-- Hull shadow -->
+  <path d="M196,26 L184,4 L14,4 L4,14 L4,38 L14,48 L184,48 Z" fill="#000" opacity="0.3" transform="translate(2,2)"/>
+  <!-- Main hull dark bottom -->
+  <path d="M196,26 L184,4 L14,4 L4,14 L4,38 L14,48 L184,48 Z" fill="#182838"/>
+  <!-- Red anti-fouling waterline -->
+  <path d="M194,26 L182,6 L16,6 L6,15" fill="none" stroke="#991111" stroke-width="4" opacity="0.7"/>
+  <path d="M194,26 L182,46 L16,46 L6,37" fill="none" stroke="#991111" stroke-width="4" opacity="0.7"/>
+  <!-- Deck surface -->
+  <rect x="14" y="9" width="168" height="34" fill="#253545" rx="2"/>
+  <!-- Bow bulb hint -->
+  <ellipse cx="190" cy="26" rx="8" ry="10" fill="#1e3248"/>
+  <!-- Hawse pipes at bow -->
+  <circle cx="182" cy="16" r="3.5" fill="#333" stroke="#555" stroke-width="1"/>
+  <circle cx="182" cy="36" r="3.5" fill="#333" stroke="#555" stroke-width="1"/>
+  <!-- Anchor chains -->
+  <line x1="178" y1="16" x2="168" y2="16" stroke="#666" stroke-width="1.5" stroke-dasharray="2,2"/>
+  <line x1="178" y1="36" x2="168" y2="36" stroke="#666" stroke-width="1.5" stroke-dasharray="2,2"/>
+  <!-- Fore mast -->
+  <line x1="162" y1="8" x2="162" y2="17" stroke="#778899" stroke-width="2"/>
+  <line x1="155" y1="10" x2="162" y2="8" stroke="#778899" stroke-width="1"/>
+  <line x1="169" y1="10" x2="162" y2="8" stroke="#778899" stroke-width="1"/>
+  <circle cx="162" cy="8" r="2.5" fill="#ffffff" opacity="0.85"/>
+  <!-- Cargo hold 1 (mid-fore) -->
+  <rect x="118" y="13" width="40" height="26" rx="2.5" fill="#1a2530" stroke="#3d5a68" stroke-width="1.5"/>
+  <line x1="138" y1="13" x2="138" y2="39" stroke="#3d5a68" stroke-width="1"/>
+  <line x1="118" y1="26" x2="158" y2="26" stroke="#3d5a68" stroke-width="1"/>
+  <!-- Hatch coaming shadow -->
+  <rect x="119" y="14" width="38" height="24" rx="2" fill="none" stroke="#0a1520" stroke-width="1" opacity="0.5"/>
+  <!-- Cargo hold 2 (mid-aft) -->
+  <rect x="68" y="13" width="40" height="26" rx="2.5" fill="#1a2530" stroke="#3d5a68" stroke-width="1.5"/>
+  <line x1="88" y1="13" x2="88" y2="39" stroke="#3d5a68" stroke-width="1"/>
+  <line x1="68" y1="26" x2="108" y2="26" stroke="#3d5a68" stroke-width="1"/>
+  <rect x="69" y="14" width="38" height="24" rx="2" fill="none" stroke="#0a1520" stroke-width="1" opacity="0.5"/>
+  <!-- Bridge / Superstructure (aft) -->
+  <rect x="16" y="10" width="44" height="32" rx="3" fill="#dfd0a0" stroke="#b8a870" stroke-width="1.5"/>
+  <!-- Bridge windows row 1 -->
+  <rect x="20" y="14" width="10" height="7" rx="1.5" fill="#88ccee" opacity="0.95" stroke="#55aacc" stroke-width="0.5"/>
+  <rect x="34" y="14" width="10" height="7" rx="1.5" fill="#88ccee" opacity="0.95" stroke="#55aacc" stroke-width="0.5"/>
+  <rect x="48" y="14" width="8"  height="7" rx="1.5" fill="#88ccee" opacity="0.95" stroke="#55aacc" stroke-width="0.5"/>
+  <!-- Bridge windows row 2 -->
+  <rect x="20" y="24" width="10" height="5" rx="1.5" fill="#77bbdd" opacity="0.8"/>
+  <rect x="34" y="24" width="10" height="5" rx="1.5" fill="#77bbdd" opacity="0.8"/>
+  <!-- Bridge roof detail -->
+  <rect x="17" y="10" width="42" height="5" rx="2" fill="#c8b888"/>
+  <!-- Wing bridge port/stbd -->
+  <rect x="17" y="9"  width="6" height="6" rx="1" fill="#ccc0a0" stroke="#aaa080" stroke-width="1"/>
+  <rect x="17" y="37" width="6" height="6" rx="1" fill="#ccc0a0" stroke="#aaa080" stroke-width="1"/>
+  <!-- Funnel (single large) -->
+  <rect x="22" y="3" width="14" height="12" rx="3" fill="#111"/>
+  <rect x="23" y="3" width="12" height="4" rx="2" fill="#2a2a2a"/>
+  <!-- Funnel band (company color) -->
+  <rect x="22" y="7"  width="14" height="4" fill="#ff6600" opacity="0.9"/>
+  <rect x="22" y="11" width="14" height="3" fill="#ffcc00" opacity="0.8"/>
+  <!-- Aft mast -->
+  <line x1="38" y1="3" x2="38" y2="12" stroke="#888" stroke-width="2"/>
+  <circle cx="38" cy="3" r="2" fill="#fff" opacity="0.8"/>
+  <!-- Lifeboat davits (both sides) -->
+  <rect x="52" y="10" width="12" height="6" rx="2" fill="#ff8844" stroke="#cc6622" stroke-width="1"/>
+  <rect x="52" y="36" width="12" height="6" rx="2" fill="#ff8844" stroke="#cc6622" stroke-width="1"/>
+  <!-- Winches on deck -->
+  <circle cx="115" cy="20" r="4" fill="#445566" stroke="#334455" stroke-width="1"/>
+  <circle cx="115" cy="32" r="4" fill="#445566" stroke="#334455" stroke-width="1"/>
+  <!-- Bollards fore -->
+  <circle cx="168" cy="14" r="3" fill="#556677" stroke="#334" stroke-width="1"/>
+  <circle cx="168" cy="38" r="3" fill="#556677" stroke="#334" stroke-width="1"/>
+  <!-- Railings -->
+  <line x1="14" y1="9"  x2="182" y2="9"  stroke="#4a6a7a" stroke-width="0.8" opacity="0.5" stroke-dasharray="6,4"/>
+  <line x1="14" y1="43" x2="182" y2="43" stroke="#4a6a7a" stroke-width="0.8" opacity="0.5" stroke-dasharray="6,4"/>
+  <!-- Nav lights -->
+  <circle cx="188" cy="12" r="3" fill="#00ff44" opacity="0.9"/>
+  <circle cx="188" cy="40" r="3" fill="#ff2222" opacity="0.9"/>
+  <!-- Waterline reflection -->
+  <ellipse cx="100" cy="49" rx="80" ry="5" fill="rgba(0,80,180,0.15)"/>
+</svg>`;
+
+// Buoy — 32×32px (top-down)
+const buoySVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Water ripple -->
+  <ellipse cx="16" cy="16" rx="15" ry="15" fill="rgba(0,80,160,0.15)" stroke="rgba(0,120,220,0.25)" stroke-width="1"/>
+  <!-- Body shadow -->
+  <circle cx="17" cy="17" r="11" fill="rgba(0,0,0,0.25)"/>
+  <!-- Main body -->
+  <circle cx="16" cy="16" r="11" fill="#e85500"/>
+  <!-- Radial gradient highlight -->
+  <radialGradient id="bg" cx="35%" cy="30%" r="65%">
+    <stop offset="0%" stop-color="#ff9944"/>
+    <stop offset="100%" stop-color="#bb3300"/>
+  </radialGradient>
+  <circle cx="16" cy="16" r="11" fill="url(#bg)"/>
+  <!-- White horizontal stripe -->
+  <rect x="5" y="13" width="22" height="6" rx="0" fill="white" opacity="0.85"/>
+  <!-- Body outline -->
+  <circle cx="16" cy="16" r="11" fill="none" stroke="#882200" stroke-width="1.5"/>
+  <!-- Top marker light -->
+  <circle cx="16" cy="6"  r="3.5" fill="#ffee22" stroke="#cc9900" stroke-width="1"/>
+  <circle cx="16" cy="6"  r="1.8" fill="#ffffff" opacity="0.9"/>
+  <!-- Anchor ring bottom -->
+  <circle cx="16" cy="27" r="2.5" fill="none" stroke="#664400" stroke-width="2"/>
+  <!-- Number "1" on body -->
+  <text x="16" y="20" text-anchor="middle" font-size="8" font-weight="bold" fill="white" font-family="monospace" opacity="0.8">●</text>
+</svg>`;
+
+// Buoy hit (red) — same but red
+const buoyHitSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <ellipse cx="16" cy="16" rx="15" ry="15" fill="rgba(255,0,0,0.15)" stroke="rgba(255,80,80,0.5)" stroke-width="1.5"/>
+  <circle cx="17" cy="17" r="11" fill="rgba(0,0,0,0.3)"/>
+  <circle cx="16" cy="16" r="11" fill="#aa0000"/>
+  <radialGradient id="bgh" cx="35%" cy="30%" r="65%">
+    <stop offset="0%" stop-color="#ff4444"/>
+    <stop offset="100%" stop-color="#660000"/>
+  </radialGradient>
+  <circle cx="16" cy="16" r="11" fill="url(#bgh)"/>
+  <rect x="5" y="13" width="22" height="6" fill="white" opacity="0.5"/>
+  <circle cx="16" cy="16" r="11" fill="none" stroke="#440000" stroke-width="1.5"/>
+  <circle cx="16" cy="6"  r="3.5" fill="#ff2222" stroke="#880000" stroke-width="1"/>
+  <circle cx="16" cy="27" r="2.5" fill="none" stroke="#550000" stroke-width="2"/>
+  <text x="16" y="20" text-anchor="middle" font-size="10" font-weight="bold" fill="white" font-family="monospace" opacity="0.9">✕</text>
+</svg>`;
+
+const imgTug      = svgImg(tugSVG);
+const imgShip     = svgImg(shipSVG);
+const imgBuoy     = svgImg(buoySVG);
+const imgBuoyHit  = svgImg(buoyHitSVG);
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+const TUG_SPEED    = 3.2;
+const TUG_TURN     = 0.045;
+const CABLE_LEN    = 72;
+const CABLE_STIFF  = 0.06;
+const SHIP_DRAG    = 0.97;
+const SHIP_ANGDRAG = 0.94;
+const CONNECT_DIST = 50;
+const DOCK_DIST    = 40;
+const PUSH_FORCE   = 0.18;
+const BUOY_R       = 13;
+const PENALTY      = 80;
+
+// ─── State ────────────────────────────────────────────────────────────────────
 let W, H;
 let tug, ship, buoys, berths, targetBerth;
 let phase; // 'approach'|'towing'|'pushing'|'docked'
-let score = 0;
-let mission = 0; // 0-based
-let totalMissions = 3;
-let buoyHits = 0;
-let levelTime = 0;
-let particles = [];
+let score = 0, mission = 0;
+const totalMissions = 3;
+let buoyHits = 0, levelTime = 0;
+let particles = [], wakes = [];
 let waveOffset = 0;
+let connectBtnRect = null;
 
-// ─── Input ──────────────────────────────────────────────────────────────────
+// ─── Input ────────────────────────────────────────────────────────────────────
 const keys = {};
-window.addEventListener('keydown', e => {
-  keys[e.key] = true;
-  if (e.key === ' ') handleConnectAction();
-});
-window.addEventListener('keyup',  e => { keys[e.key] = false; });
+window.addEventListener('keydown', e => { keys[e.key] = true;  if (e.key === ' ') handleAction(); });
+window.addEventListener('keyup',   e => { keys[e.key] = false; });
 
-// Virtual joystick
 let joyActive = false, joyStartX = 0, joyStartY = 0, joyDX = 0, joyDY = 0;
-const JOY_ZONE = { x: 0, y: 0, w: 130, h: 130 }; // screen region
+canvas.addEventListener('touchstart', onTS, {passive:false});
+canvas.addEventListener('touchmove',  onTM, {passive:false});
+canvas.addEventListener('touchend',   onTE, {passive:false});
+canvas.addEventListener('mousedown',  e => { if (inConnBtn(e.clientX, e.clientY)) handleAction(); });
 
-canvas.addEventListener('touchstart', onTouchStart, {passive:false});
-canvas.addEventListener('touchmove',  onTouchMove,  {passive:false});
-canvas.addEventListener('touchend',   onTouchEnd,   {passive:false});
-canvas.addEventListener('mousedown',  onMouseDown);
-canvas.addEventListener('mousemove',  onMouseMove);
-canvas.addEventListener('mouseup',    onMouseUp);
-
-let mouseDown = false, mouseX = 0, mouseY = 0;
-let connectBtnRect = null; // set during draw
-
-function inJoyZone(x, y) {
-  return x < 160 && y > canvas.height - 160;
-}
-function inConnectZone(x, y) {
+function inJoyZone(x, y) { return x < 160 && y > canvas.height - 160; }
+function inConnBtn(x, y) {
   if (!connectBtnRect) return false;
   const r = connectBtnRect;
   return x >= r.x && x <= r.x+r.w && y >= r.y && y <= r.y+r.h;
 }
-
-function onTouchStart(e) {
+function onTS(e) {
   e.preventDefault();
   for (const t of e.changedTouches) {
-    const x = t.clientX, y = t.clientY;
-    if (inConnectZone(x, y)) { handleConnectAction(); continue; }
-    if (inJoyZone(x, y) && !joyActive) {
-      joyActive = true; joyStartX = x; joyStartY = y;
-      joyDX = 0; joyDY = 0;
+    if (inConnBtn(t.clientX, t.clientY)) { handleAction(); continue; }
+    if (inJoyZone(t.clientX, t.clientY) && !joyActive) {
+      joyActive = true; joyStartX = t.clientX; joyStartY = t.clientY; joyDX = joyDY = 0;
     }
   }
 }
-function onTouchMove(e) {
+function onTM(e) {
   e.preventDefault();
   for (const t of e.changedTouches) {
-    const x = t.clientX, y = t.clientY;
-    if (joyActive) {
-      joyDX = x - joyStartX;
-      joyDY = y - joyStartY;
-      const len = Math.hypot(joyDX, joyDY);
-      const maxR = 38;
-      if (len > maxR) { joyDX = joyDX/len*maxR; joyDY = joyDY/len*maxR; }
-    }
+    if (!joyActive) continue;
+    joyDX = t.clientX - joyStartX; joyDY = t.clientY - joyStartY;
+    const len = Math.hypot(joyDX, joyDY), maxR = 40;
+    if (len > maxR) { joyDX = joyDX/len*maxR; joyDY = joyDY/len*maxR; }
   }
 }
-function onTouchEnd(e) {
-  e.preventDefault();
-  joyActive = false; joyDX = 0; joyDY = 0;
-}
-function onMouseDown(e) { mouseDown = true; mouseX = e.clientX; mouseY = e.clientY;
-  if (inConnectZone(e.clientX, e.clientY)) handleConnectAction();
-}
-function onMouseMove(e) { mouseX = e.clientX; mouseY = e.clientY; }
-function onMouseUp()    { mouseDown = false; }
+function onTE(e) { e.preventDefault(); joyActive = false; joyDX = joyDY = 0; }
 
-// ─── Level builder ──────────────────────────────────────────────────────────
+// ─── Level ────────────────────────────────────────────────────────────────────
 function buildLevel() {
   W = canvas.width; H = canvas.height;
 
-  // Port on right side
-  const portX = W * 0.72;
-  const berthW = 90, berthH = 56;
-  const berthSpacing = berthH + 20;
-  const totalBerthHeight = 3 * berthH + 2 * 20;
-  const berthStartY = H/2 - totalBerthHeight/2;
+  const portX    = W * 0.72;
+  const berthW   = 94, berthH = 58;
+  const spacing  = berthH + 22;
+  const startY   = H/2 - (3*berthH + 2*22)/2;
 
-  berths = [];
-  for (let i = 0; i < 3; i++) {
-    berths.push({
-      x: portX,
-      y: berthStartY + i * berthSpacing,
-      w: berthW,
-      h: berthH,
-      docked: false,
-      id: i,
-    });
+  berths = Array.from({length:3}, (_, i) => ({
+    x: portX, y: startY + i*spacing, w: berthW, h: berthH,
+    docked: false, id: i,
+  }));
+
+  // Keep previously docked berths
+  if (mission > 0) {
+    for (let i = 0; i < mission; i++) berths[i % 3].docked = true;
   }
 
-  // Target berth for this mission (cycle)
   targetBerth = berths[mission % 3];
+  targetBerth.docked = false;
 
-  // Buoy corridor — channel leading from open water to port entrance
-  const channelCenterY = targetBerth.y + berthH/2;
-  const corridorStartX = W * 0.22;
-  const corridorEndX   = portX - 10;
-  const corridorHalfW  = 44;
-  const numBuoys       = 7;
+  const channelY   = targetBerth.y + berthH/2;
+  const cStartX    = W * 0.22;
+  const cEndX      = portX - 14;
+  const halfW      = 46;
+  const numPairs   = 7;
   buoys = [];
-  for (let i = 0; i <= numBuoys; i++) {
-    const bx = corridorStartX + (corridorEndX - corridorStartX) * (i / numBuoys);
-    buoys.push({ x: bx, y: channelCenterY - corridorHalfW, r: BUOY_R, hit: false, wobble: Math.random()*Math.PI*2 });
-    buoys.push({ x: bx, y: channelCenterY + corridorHalfW, r: BUOY_R, hit: false, wobble: Math.random()*Math.PI*2 });
+  for (let i = 0; i <= numPairs; i++) {
+    const bx = cStartX + (cEndX - cStartX) * (i / numPairs);
+    buoys.push({ x:bx, y:channelY - halfW, r:BUOY_R, hit:false, wobble:Math.random()*Math.PI*2 });
+    buoys.push({ x:bx, y:channelY + halfW, r:BUOY_R, hit:false, wobble:Math.random()*Math.PI*2 });
   }
 
-  // Ship starting position (left area)
   const sx = W * 0.1, sy = H * 0.35;
-  ship = {
-    x: sx, y: sy,
-    vx: 0, vy: 0,
-    angle: 0,
-    angVel: 0,
-    len: 80, wid: 22,
-    connected: false,
-    docked: false,
-  };
+  ship = { x:sx, y:sy, vx:0, vy:0, angle:0, angVel:0, len:90, wid:25, connected:false };
+  tug  = { x:sx - 100, y:sy + 50, vx:0, vy:0, angle:0, len:44, wid:20 };
 
-  // Tug starting position nearby
-  tug = {
-    x: sx - 90, y: sy + 40,
-    vx: 0, vy: 0,
-    angle: 0,
-    len: 36, wid: 16,
-  };
-
-  phase = 'approach';
-  buoyHits = 0;
-  levelTime = 0;
-  particles = [];
+  phase = 'approach'; buoyHits = 0; levelTime = 0; particles = []; wakes = [];
   updateUI();
 }
 
-// ─── Ship bow position ───────────────────────────────────────────────────────
-function shipBow() {
-  return {
-    x: ship.x + Math.cos(ship.angle) * ship.len/2,
-    y: ship.y + Math.sin(ship.angle) * ship.len/2,
-  };
-}
-function shipStern() {
-  return {
-    x: ship.x - Math.cos(ship.angle) * ship.len/2,
-    y: ship.y - Math.sin(ship.angle) * ship.len/2,
-  };
-}
-function tugFront() {
-  return {
-    x: tug.x + Math.cos(tug.angle) * tug.len/2,
-    y: tug.y + Math.sin(tug.angle) * tug.len/2,
-  };
-}
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+const shipBow   = () => ({ x: ship.x + Math.cos(ship.angle)*ship.len/2,  y: ship.y + Math.sin(ship.angle)*ship.len/2 });
+const shipStern = () => ({ x: ship.x - Math.cos(ship.angle)*ship.len/2,  y: ship.y - Math.sin(ship.angle)*ship.len/2 });
+const tugFront  = () => ({ x: tug.x  + Math.cos(tug.angle) *tug.len/2,   y: tug.y  + Math.sin(tug.angle) *tug.len/2 });
 
-// ─── Connect/Disconnect action ───────────────────────────────────────────────
-function handleConnectAction() {
+// ─── Action (connect / release) ───────────────────────────────────────────────
+function handleAction() {
   if (phase === 'approach') {
-    // Try to connect
-    const bow = shipBow();
-    const tf  = tugFront();
-    const dist = Math.hypot(tf.x - bow.x, tf.y - bow.y);
-    if (dist < CONNECT_DIST) {
-      ship.connected = true;
-      phase = 'towing';
-      spawnParticles(bow.x, bow.y, '#00ffcc', 12);
+    const bow = shipBow(), tf = tugFront();
+    if (Math.hypot(tf.x-bow.x, tf.y-bow.y) < CONNECT_DIST) {
+      ship.connected = true; phase = 'towing';
+      spawnParticles(bow.x, bow.y, '#00ffcc', 14);
       updateUI();
     }
   } else if (phase === 'towing') {
-    // Disconnect near berth
     const tb = targetBerth;
-    const berthCenter = { x: tb.x + tb.w/2, y: tb.y + tb.h/2 };
-    const dist = Math.hypot(ship.x - berthCenter.x, ship.y - berthCenter.y);
-    if (dist < 120) {
-      ship.connected = false;
-      phase = 'pushing';
-      updateUI();
+    if (Math.hypot(ship.x-(tb.x+tb.w/2), ship.y-(tb.y+tb.h/2)) < 130) {
+      ship.connected = false; phase = 'pushing'; updateUI();
     }
   }
 }
 
-// ─── Physics update ──────────────────────────────────────────────────────────
+// ─── Physics ──────────────────────────────────────────────────────────────────
 function update(dt) {
-  waveOffset += 0.012;
-  levelTime += dt;
+  waveOffset += 0.012; levelTime += dt;
 
-  // ── Tug input ──
   let thrust = 0, turn = 0;
+  if (keys['ArrowUp']   ||keys['w']||keys['W']) thrust =  1;
+  if (keys['ArrowDown'] ||keys['s']||keys['S']) thrust = -0.4;
+  if (keys['ArrowLeft'] ||keys['a']||keys['A']) turn   = -1;
+  if (keys['ArrowRight']||keys['d']||keys['D']) turn   =  1;
 
-  if (keys['ArrowUp']    || keys['w'] || keys['W']) thrust =  1;
-  if (keys['ArrowDown']  || keys['s'] || keys['S']) thrust = -0.4;
-  if (keys['ArrowLeft']  || keys['a'] || keys['A']) turn   = -1;
-  if (keys['ArrowRight'] || keys['d'] || keys['D']) turn   =  1;
-
-  // Joystick
-  if (joyActive || (Math.hypot(joyDX, joyDY) > 4)) {
-    const len = Math.hypot(joyDX, joyDY);
-    if (len > 4) {
-      const jAngle = Math.atan2(joyDY, joyDX);
-      const diff = angleDiff(jAngle, tug.angle);
-      turn   = Math.sign(diff) * Math.min(Math.abs(diff) / 0.5, 1);
-      thrust = Math.cos(diff) * (len / 38);
-    }
+  if (Math.hypot(joyDX, joyDY) > 4) {
+    const jA = Math.atan2(joyDY, joyDX);
+    const d  = angleDiff(jA, tug.angle);
+    turn   = Math.sign(d) * Math.min(Math.abs(d)/0.5, 1);
+    thrust = Math.cos(d) * (Math.hypot(joyDX,joyDY) / 40);
   }
 
   tug.angle += turn * TUG_TURN;
-  const spd = TUG_SPEED * thrust;
-  tug.vx += Math.cos(tug.angle) * spd * 0.12;
-  tug.vy += Math.sin(tug.angle) * spd * 0.12;
-  tug.vx *= 0.88; tug.vy *= 0.88;
-  tug.x += tug.vx; tug.y += tug.vy;
+  tug.vx    += Math.cos(tug.angle) * TUG_SPEED * thrust * 0.12;
+  tug.vy    += Math.sin(tug.angle) * TUG_SPEED * thrust * 0.12;
+  tug.vx    *= 0.88; tug.vy *= 0.88;
+  tug.x = clamp(tug.x + tug.vx, 24, W - 24);
+  tug.y = clamp(tug.y + tug.vy, 24, H - 24);
 
-  // Keep tug in bounds
-  tug.x = clamp(tug.x, 20, W - 20);
-  tug.y = clamp(tug.y, 20, H - 20);
+  // Wake trail
+  const spd = Math.hypot(tug.vx, tug.vy);
+  if (spd > 0.25) {
+    const stern = { x: tug.x - Math.cos(tug.angle)*tug.len/2, y: tug.y - Math.sin(tug.angle)*tug.len/2 };
+    wakes.push({ x:stern.x, y:stern.y, life:1, r: 4 + spd*3 });
+  }
+  for (let i = wakes.length-1; i >= 0; i--) {
+    wakes[i].life -= 0.018; wakes[i].r += 0.4;
+    if (wakes[i].life <= 0) wakes.splice(i, 1);
+  }
 
-  // ── Cable / towing ──
   if (phase === 'towing' && ship.connected) {
-    const bow = shipBow();
-    const tf  = tugFront();
-    const dx  = tf.x - bow.x;
-    const dy  = tf.y - bow.y;
+    const bow = shipBow(), tf = tugFront();
+    const dx = tf.x - bow.x, dy = tf.y - bow.y;
     const dist = Math.hypot(dx, dy);
     if (dist > CABLE_LEN) {
-      const over   = dist - CABLE_LEN;
-      const nx     = dx / dist;
-      const ny     = dy / dist;
-      const force  = over * CABLE_STIFF;
-      // Apply force to ship bow — also creates torque
-      ship.vx += nx * force;
-      ship.vy += ny * force;
-      // Torque: cross product of bow-relative position and force
-      const bowRel = { x: bow.x - ship.x, y: bow.y - ship.y };
-      const torque = bowRel.x * ny * force - bowRel.y * nx * force;
-      ship.angVel += torque * 0.004;
+      const over = dist - CABLE_LEN, nx = dx/dist, ny = dy/dist, f = over * CABLE_STIFF;
+      ship.vx += nx*f; ship.vy += ny*f;
+      const br = { x: bow.x - ship.x, y: bow.y - ship.y };
+      ship.angVel += (br.x*ny*f - br.y*nx*f) * 0.004;
     }
     ship.vx *= SHIP_DRAG; ship.vy *= SHIP_DRAG;
     ship.angVel *= SHIP_ANGDRAG;
-    ship.x += ship.vx; ship.y += ship.vy;
-    ship.angle += ship.angVel;
+    ship.x += ship.vx; ship.y += ship.vy; ship.angle += ship.angVel;
   }
 
-  // ── Pushing ──
   if (phase === 'pushing') {
-    const tf    = tugFront();
-    const stern = shipStern();
-    const dx    = tf.x - stern.x;
-    const dy    = tf.y - stern.y;
-    const dist  = Math.hypot(dx, dy);
-    if (dist < 30) {
-      // Push force along tug heading
-      ship.vx += Math.cos(tug.angle) * PUSH_FORCE;
-      ship.vy += Math.sin(tug.angle) * PUSH_FORCE;
+    const tf = tugFront(), stern = shipStern();
+    if (Math.hypot(tf.x-stern.x, tf.y-stern.y) < 34) {
+      ship.vx += Math.cos(tug.angle)*PUSH_FORCE;
+      ship.vy += Math.sin(tug.angle)*PUSH_FORCE;
     }
     ship.vx *= SHIP_DRAG; ship.vy *= SHIP_DRAG;
     ship.angVel *= SHIP_ANGDRAG;
-    ship.x += ship.vx; ship.y += ship.vy;
-    ship.angle += ship.angVel;
-
-    // Check docking
+    ship.x += ship.vx; ship.y += ship.vy; ship.angle += ship.angVel;
     const tb = targetBerth;
-    const berthCX = tb.x + tb.w/2;
-    const berthCY = tb.y + tb.h/2;
-    const dist2 = Math.hypot(ship.x - berthCX, ship.y - berthCY);
-    if (dist2 < DOCK_DIST) {
-      dockedSuccess();
-    }
+    if (Math.hypot(ship.x-(tb.x+tb.w/2), ship.y-(tb.y+tb.h/2)) < DOCK_DIST) dockedSuccess();
   }
 
-  // ── Buoy collisions (towing / pushing) ──
-  if (phase === 'towing' || phase === 'pushing') {
-    checkBuoyCollisions();
-  }
+  if (phase === 'towing' || phase === 'pushing') checkBuoys();
 
-  // ── Particles ──
-  for (let i = particles.length - 1; i >= 0; i--) {
+  for (let i = particles.length-1; i >= 0; i--) {
     const p = particles[i];
-    p.x += p.vx; p.y += p.vy;
-    p.life -= 0.025;
+    p.x += p.vx; p.y += p.vy; p.life -= 0.022;
     if (p.life <= 0) particles.splice(i, 1);
   }
 }
 
-function checkBuoyCollisions() {
-  // Check ship hull against buoys
-  const corners = getShipCorners();
+function checkBuoys() {
+  const corners = shipCorners();
   for (const b of buoys) {
     if (b.hit) continue;
-    // Circle-vs-polygon: simple dist to segment check
-    const hit = pointNearPoly(b.x, b.y, corners, b.r + 4);
-    if (hit) {
-      b.hit = true;
-      buoyHits++;
+    if (pointNearPoly(b.x, b.y, corners, b.r + 4)) {
+      b.hit = true; buoyHits++;
       score = Math.max(0, score - PENALTY);
-      spawnParticles(b.x, b.y, '#ff4444', 8);
-      updateUI();
+      spawnParticles(b.x, b.y, '#ff4444', 10); updateUI();
     }
   }
 }
-
-function getShipCorners() {
-  const ca = Math.cos(ship.angle), sa = Math.sin(ship.angle);
-  const hw = ship.wid/2, hl = ship.len/2;
+function shipCorners() {
+  const ca = Math.cos(ship.angle), sa = Math.sin(ship.angle), hw = ship.wid/2, hl = ship.len/2;
   return [
-    { x: ship.x + ca*hl - sa*hw, y: ship.y + sa*hl + ca*hw },
-    { x: ship.x + ca*hl + sa*hw, y: ship.y + sa*hl - ca*hw },
-    { x: ship.x - ca*hl + sa*hw, y: ship.y - sa*hl - ca*hw },
-    { x: ship.x - ca*hl - sa*hw, y: ship.y - sa*hl + ca*hw },
+    {x: ship.x+ca*hl-sa*hw, y: ship.y+sa*hl+ca*hw},
+    {x: ship.x+ca*hl+sa*hw, y: ship.y+sa*hl-ca*hw},
+    {x: ship.x-ca*hl+sa*hw, y: ship.y-sa*hl-ca*hw},
+    {x: ship.x-ca*hl-sa*hw, y: ship.y-sa*hl+ca*hw},
   ];
 }
-
 function pointNearPoly(px, py, poly, radius) {
   const n = poly.length;
   for (let i = 0; i < n; i++) {
     const a = poly[i], b = poly[(i+1)%n];
-    const d = distToSegment(px, py, a.x, a.y, b.x, b.y);
-    if (d < radius) return true;
+    if (distSeg(px,py,a.x,a.y,b.x,b.y) < radius) return true;
   }
-  // Also check if point inside polygon
   let inside = false;
   for (let i = 0, j = n-1; i < n; j = i++) {
     if ((poly[i].y > py) !== (poly[j].y > py) &&
-        px < (poly[j].x - poly[i].x) * (py - poly[i].y) / (poly[j].y - poly[i].y) + poly[i].x) {
-      inside = !inside;
-    }
+        px < (poly[j].x-poly[i].x)*(py-poly[i].y)/(poly[j].y-poly[i].y)+poly[i].x) inside = !inside;
   }
   return inside;
 }
-
-function distToSegment(px, py, ax, ay, bx, by) {
-  const dx = bx-ax, dy = by-ay;
-  const lenSq = dx*dx + dy*dy;
-  if (lenSq === 0) return Math.hypot(px-ax, py-ay);
-  const t = clamp(((px-ax)*dx + (py-ay)*dy) / lenSq, 0, 1);
-  return Math.hypot(px - (ax+t*dx), py - (ay+t*dy));
+function distSeg(px,py,ax,ay,bx,by) {
+  const dx=bx-ax, dy=by-ay, l2=dx*dx+dy*dy;
+  if (!l2) return Math.hypot(px-ax,py-ay);
+  const t = clamp(((px-ax)*dx+(py-ay)*dy)/l2, 0, 1);
+  return Math.hypot(px-(ax+t*dx), py-(ay+t*dy));
 }
 
 function dockedSuccess() {
   if (phase === 'docked') return;
-  phase = 'docked';
-  targetBerth.docked = true;
-
-  const basePoints = 500;
-  const hitPenalty = buoyHits * PENALTY;
-  const timeBonus  = Math.max(0, Math.floor(300 - levelTime/1000 * 5));
-  score += basePoints + timeBonus - hitPenalty;
-  score = Math.max(score, 0);
-
-  spawnParticles(ship.x, ship.y, '#ffd700', 30);
+  phase = 'docked'; targetBerth.docked = true;
+  score += Math.max(0, 500 + Math.floor(300 - levelTime/1000*5) - buoyHits*PENALTY);
+  spawnParticles(ship.x, ship.y, '#ffd700', 32);
   spawnParticles(ship.x, ship.y, '#00ffcc', 20);
-
   updateUI();
-
-  if (mission + 1 >= totalMissions) {
-    setTimeout(showVictory, 1200);
-  } else {
-    setTimeout(nextMission, 1800);
-  }
+  if (mission + 1 >= totalMissions) setTimeout(showVictory, 1400);
+  else setTimeout(() => { mission++; buildLevel(); }, 2000);
 }
 
-function nextMission() {
-  mission++;
-  buildLevel();
-}
-
-// ─── Render ─────────────────────────────────────────────────────────────────
+// ─── Render ───────────────────────────────────────────────────────────────────
 function draw() {
   ctx.clearRect(0, 0, W, H);
-
   drawWater();
   drawPort();
   drawBerths();
   drawBuoys();
+  drawWakes();
   if (phase === 'towing') drawCable();
-  drawShip();
-  drawTug();
+  drawShipSprite();
+  drawTugSprite();
   drawParticles();
-  drawConnectButton();
+  drawConnectBtn();
   drawJoystick();
   drawPhaseHint();
 }
 
+// ── Water ──
 function drawWater() {
-  // Ocean gradient
-  const grad = ctx.createLinearGradient(0, 0, W, H);
-  grad.addColorStop(0, '#003355');
-  grad.addColorStop(1, '#001a2e');
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, W, H);
-
-  // Animated wave lines
-  ctx.strokeStyle = 'rgba(0,120,200,0.18)';
-  ctx.lineWidth = 1;
-  for (let i = 0; i < 18; i++) {
-    const yBase = (H / 18) * i + ((waveOffset * 18 + i * 37) % H);
+  const g = ctx.createLinearGradient(0,0,W,H);
+  g.addColorStop(0,'#004466'); g.addColorStop(1,'#001a2e');
+  ctx.fillStyle = g; ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle = 'rgba(0,130,210,0.14)'; ctx.lineWidth = 1.2;
+  for (let i = 0; i < 20; i++) {
+    const yb = ((H/20)*i + waveOffset*20 + i*41) % H;
     ctx.beginPath();
-    for (let x = 0; x < W; x += 6) {
-      const y = yBase + Math.sin(x * 0.025 + waveOffset + i) * 5;
-      x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    for (let x = 0; x <= W; x += 8) {
+      const y = yb + Math.sin(x*0.022 + waveOffset + i*0.7)*6;
+      x===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
     }
     ctx.stroke();
   }
 }
 
+// ── Port ──
 function drawPort() {
-  const portX = W * 0.72;
-  // Quay wall
-  ctx.fillStyle = '#5a4a38';
-  ctx.fillRect(portX + 85, 0, W - portX - 85, H);
-  // Concrete edge
-  ctx.fillStyle = '#7a6a58';
-  ctx.fillRect(portX + 82, 0, 8, H);
-  // Pier markings
-  ctx.strokeStyle = '#8a7a68';
-  ctx.lineWidth = 2;
-  for (let y = 0; y < H; y += 30) {
-    ctx.beginPath();
-    ctx.moveTo(portX + 82, y);
-    ctx.lineTo(portX + W, y);
-    ctx.stroke();
+  const px = W * 0.72;
+
+  // Deep water shadow at quay edge
+  const sg = ctx.createLinearGradient(px, 0, px+30, 0);
+  sg.addColorStop(0,'rgba(0,0,0,0.35)'); sg.addColorStop(1,'transparent');
+  ctx.fillStyle = sg; ctx.fillRect(px, 0, 30, H);
+
+  // Quay concrete
+  ctx.fillStyle = '#4a4035';
+  ctx.fillRect(px+92, 0, W-px-92, H);
+
+  // Concrete texture strips
+  ctx.strokeStyle = '#3a3028'; ctx.lineWidth = 1;
+  for (let y = 0; y < H; y += 18) {
+    ctx.beginPath(); ctx.moveTo(px+92,y); ctx.lineTo(W,y); ctx.stroke();
   }
-  // Water-side shading
-  ctx.fillStyle = 'rgba(0,0,0,0.25)';
-  ctx.fillRect(portX, 0, 85, H);
+
+  // Quay face (edge wall)
+  ctx.fillStyle = '#6a5a48';
+  ctx.fillRect(px+88, 0, 8, H);
+  // Top highlight
+  ctx.fillStyle = '#8a7a68';
+  ctx.fillRect(px+88, 0, 2, H);
+
+  // Warehouse buildings
+  const warehouses = [
+    { x: px+100, y: 10,      w: Math.min(W-px-110, 120), h: H*0.25 },
+    { x: px+100, y: H*0.38,  w: Math.min(W-px-110, 100), h: H*0.22 },
+    { x: px+100, y: H*0.72,  w: Math.min(W-px-110, 110), h: H*0.24 },
+  ];
+  for (const wh of warehouses) {
+    if (wh.x + wh.w > W - 4) continue;
+    // Building shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.fillRect(wh.x+4, wh.y+4, wh.w, wh.h);
+    // Building body
+    ctx.fillStyle = '#5a5040';
+    ctx.fillRect(wh.x, wh.y, wh.w, wh.h);
+    // Roof
+    ctx.fillStyle = '#4a4030';
+    ctx.fillRect(wh.x, wh.y, wh.w, 8);
+    // Doors
+    const doorW = 16, doorH = 22;
+    for (let dx = wh.x + 14; dx < wh.x+wh.w-doorW; dx += doorW+14) {
+      ctx.fillStyle = '#2a2018';
+      ctx.fillRect(dx, wh.y+wh.h-doorH, doorW, doorH);
+      ctx.strokeStyle = '#3a3028'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(dx+doorW/2, wh.y+wh.h-doorH); ctx.lineTo(dx+doorW/2, wh.y+wh.h); ctx.stroke();
+    }
+    // Windows
+    ctx.fillStyle = '#ffeeaa';
+    for (let wx = wh.x+10; wx < wh.x+wh.w-8; wx += 18) {
+      ctx.fillRect(wx, wh.y+12, 8, 6);
+    }
+  }
+
+  // Portal crane (simplified top-down silhouette)
+  drawCrane(px + 94, H * 0.18);
+  drawCrane(px + 94, H * 0.60);
 }
 
-function drawBerths() {
-  for (const b of berths) {
-    const isTarget = (b === targetBerth);
-    const isDocked  = b.docked;
+function drawCrane(x, y) {
+  // Crane base legs
+  ctx.fillStyle = '#778899';
+  ctx.fillRect(x, y-4, 6, 20);
+  ctx.fillRect(x+14, y-4, 6, 20);
+  // Crane beam
+  ctx.fillStyle = '#8899aa';
+  ctx.fillRect(x-8, y-6, 36, 5);
+  // Hook cable
+  ctx.strokeStyle = '#556677'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(x+10, y-1); ctx.lineTo(x+10, y+14); ctx.stroke();
+  // Hook
+  ctx.beginPath(); ctx.arc(x+10, y+16, 3, 0, Math.PI*2);
+  ctx.fillStyle = '#445566'; ctx.fill();
+}
 
-    // Berth slot
+// ── Berths ──
+function drawBerths() {
+  const now = Date.now();
+  for (const b of berths) {
+    const isTarget = b === targetBerth && phase !== 'docked';
+    const isDocked  = b.docked;
+    const pulse     = 0.5 + 0.5 * Math.sin(now * 0.004);
+
+    // Water area of berth
     ctx.save();
     if (isDocked) {
-      ctx.fillStyle = 'rgba(0,255,100,0.18)';
+      ctx.fillStyle   = 'rgba(0,255,120,0.15)';
       ctx.strokeStyle = '#00ff88';
-    } else if (isTarget && (phase === 'approach' || phase === 'towing' || phase === 'pushing')) {
-      const pulse = 0.5 + 0.5 * Math.sin(Date.now() * 0.004);
-      ctx.fillStyle = `rgba(0,200,255,${0.08 + pulse * 0.12})`;
-      ctx.strokeStyle = `rgba(0,200,255,${0.5 + pulse * 0.5})`;
+    } else if (isTarget) {
+      ctx.fillStyle   = `rgba(0,180,255,${0.06+pulse*0.12})`;
+      ctx.strokeStyle = `rgba(0,200,255,${0.4+pulse*0.6})`;
     } else {
-      ctx.fillStyle = 'rgba(255,255,255,0.05)';
-      ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+      ctx.fillStyle   = 'rgba(0,0,0,0.15)';
+      ctx.strokeStyle = 'rgba(255,255,255,0.15)';
     }
     ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.rect(b.x, b.y, b.w, b.h);
-    ctx.fill();
-    ctx.stroke();
+    ctx.beginPath(); ctx.rect(b.x, b.y, b.w, b.h);
+    ctx.fill(); ctx.stroke();
     ctx.restore();
 
-    // Berth number
-    ctx.fillStyle = isDocked ? '#00ff88' : isTarget ? '#7df4ff' : 'rgba(255,255,255,0.3)';
-    ctx.font = `bold ${isTarget ? 14 : 12}px monospace`;
-    ctx.textAlign = 'center';
-    ctx.fillText(`CAIS ${b.id + 1}`, b.x + b.w/2, b.y + b.h/2 + 5);
-
-    // Mooring posts
-    for (const py of [b.y + 8, b.y + b.h - 8]) {
-      ctx.beginPath();
-      ctx.arc(b.x + 4, py, 4, 0, Math.PI*2);
-      ctx.fillStyle = '#8a7a68';
-      ctx.fill();
+    // Arrow guides into berth when target
+    if (isTarget) {
+      ctx.save();
+      ctx.globalAlpha = 0.35 + pulse*0.35;
+      ctx.fillStyle = '#00eeff';
+      for (let aw = 0; aw < 3; aw++) {
+        const ax = b.x + 14 + aw*20;
+        const ay = b.y + b.h/2;
+        ctx.beginPath();
+        ctx.moveTo(ax, ay-7); ctx.lineTo(ax+10, ay); ctx.lineTo(ax, ay+7);
+        ctx.fill();
+      }
+      ctx.restore();
     }
+
+    // Mooring bollards (4 corners)
+    const bollardPositions = [
+      [b.x+6, b.y+8], [b.x+6, b.y+b.h-8],
+    ];
+    for (const [bx, by] of bollardPositions) {
+      ctx.beginPath(); ctx.arc(bx, by, 5, 0, Math.PI*2);
+      ctx.fillStyle = '#7a6a58'; ctx.fill();
+      ctx.beginPath(); ctx.arc(bx, by, 3, 0, Math.PI*2);
+      ctx.fillStyle = '#9a8a78'; ctx.fill();
+      // Mooring rope
+      if (isDocked) {
+        ctx.strokeStyle = '#886644'; ctx.lineWidth = 1.5;
+        ctx.setLineDash([3,3]);
+        ctx.beginPath(); ctx.moveTo(bx+4, by); ctx.lineTo(bx+24, by); ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+
+    // Label
+    ctx.fillStyle = isDocked ? '#00ff88' : isTarget ? '#7df4ff' : 'rgba(255,255,255,0.25)';
+    ctx.font = `bold ${isTarget?13:11}px monospace`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(isDocked ? `✓ CAIS ${b.id+1}` : `CAIS ${b.id+1}`, b.x+b.w/2+6, b.y+b.h/2);
   }
 }
 
+// ── Buoys ──
 function drawBuoys() {
   for (const b of buoys) {
-    b.wobble += 0.04;
-    const wobX = Math.sin(b.wobble) * 2.2;
-    const wobY = Math.cos(b.wobble * 0.7) * 1.4;
-    const x = b.x + wobX, y = b.y + wobY;
-
-    // Shadow
-    ctx.beginPath();
-    ctx.arc(x + 2, y + 2, b.r, 0, Math.PI*2);
-    ctx.fillStyle = 'rgba(0,0,0,0.25)';
-    ctx.fill();
-
-    // Body
-    const grad = ctx.createRadialGradient(x-2, y-2, 1, x, y, b.r);
-    if (b.hit) {
-      grad.addColorStop(0, '#ff8888');
-      grad.addColorStop(1, '#880000');
+    b.wobble += 0.038;
+    const wx = Math.sin(b.wobble)*2.4, wy = Math.cos(b.wobble*0.65)*1.6;
+    const x = b.x+wx, y = b.y+wy;
+    const img = b.hit ? imgBuoyHit : imgBuoy;
+    const s = b.r * 2.2;
+    if (img.complete && img.naturalWidth) {
+      ctx.drawImage(img, x-s/2, y-s/2, s, s);
     } else {
-      grad.addColorStop(0, '#ffcc44');
-      grad.addColorStop(1, '#cc6600');
+      // Fallback circle
+      ctx.beginPath(); ctx.arc(x,y,b.r,0,Math.PI*2);
+      ctx.fillStyle = b.hit ? '#aa0000' : '#cc5500'; ctx.fill();
     }
-    ctx.beginPath();
-    ctx.arc(x, y, b.r, 0, Math.PI*2);
-    ctx.fillStyle = grad;
-    ctx.fill();
-
-    // Stripe
-    ctx.save();
-    ctx.clip();
-    ctx.strokeStyle = b.hit ? '#ff0000' : '#ff9900';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(x - b.r, y); ctx.lineTo(x + b.r, y);
-    ctx.stroke();
-    ctx.restore();
-
-    // Top light
-    ctx.beginPath();
-    ctx.arc(x, y - b.r * 0.6, b.r * 0.2, 0, Math.PI*2);
-    ctx.fillStyle = b.hit ? '#ff0000' : '#ffffff';
-    ctx.fill();
-
-    // Chain to bottom
-    ctx.strokeStyle = 'rgba(150,120,80,0.5)';
-    ctx.lineWidth = 1;
+    // Chain shadow
+    ctx.strokeStyle = 'rgba(120,90,50,0.4)'; ctx.lineWidth = 1;
     ctx.setLineDash([2,3]);
-    ctx.beginPath();
-    ctx.moveTo(x, y + b.r);
-    ctx.lineTo(x + Math.sin(b.wobble * 0.5) * 3, y + b.r + 14);
-    ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x, y+b.r+1); ctx.lineTo(x+Math.sin(b.wobble*0.4)*3, y+b.r+16); ctx.stroke();
     ctx.setLineDash([]);
   }
 }
 
-function drawCable() {
-  const bow = shipBow();
-  const tf  = tugFront();
-  const dist = Math.hypot(tf.x - bow.x, tf.y - bow.y);
-  const taut = dist >= CABLE_LEN * 0.9;
-
-  ctx.save();
-  ctx.lineCap = 'round';
-  ctx.lineWidth = taut ? 2.5 : 1.5;
-  ctx.strokeStyle = taut ? '#ffcc00' : '#aa8844';
-  ctx.setLineDash(taut ? [] : [6, 4]);
-
-  if (taut) {
-    ctx.beginPath();
-    ctx.moveTo(bow.x, bow.y);
-    ctx.lineTo(tf.x, tf.y);
+// ── Wakes ──
+function drawWakes() {
+  for (const w of wakes) {
+    ctx.save();
+    ctx.globalAlpha = w.life * 0.35;
+    ctx.beginPath(); ctx.arc(w.x, w.y, w.r, 0, Math.PI*2);
+    ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 1.5;
     ctx.stroke();
-  } else {
-    // Catenary sag
-    const midX = (bow.x + tf.x) / 2;
-    const midY = (bow.y + tf.y) / 2 + 12;
-    ctx.beginPath();
-    ctx.moveTo(bow.x, bow.y);
-    ctx.quadraticCurveTo(midX, midY, tf.x, tf.y);
-    ctx.stroke();
+    ctx.restore();
   }
-  ctx.setLineDash([]);
-  ctx.restore();
-
-  // Connection points
-  ctx.beginPath();
-  ctx.arc(bow.x, bow.y, 5, 0, Math.PI*2);
-  ctx.fillStyle = '#ffcc00';
-  ctx.fill();
 }
 
-function drawShip() {
+// ── Cable ──
+function drawCable() {
+  const bow = shipBow(), tf = tugFront();
+  const dist = Math.hypot(tf.x-bow.x, tf.y-bow.y);
+  const taut = dist >= CABLE_LEN * 0.88;
+  ctx.save(); ctx.lineCap = 'round';
+  ctx.lineWidth   = taut ? 3 : 2;
+  ctx.strokeStyle = taut ? '#ffcc00' : '#997744';
+  ctx.setLineDash(taut ? [] : [7,5]);
+  ctx.beginPath(); ctx.moveTo(bow.x, bow.y);
+  if (taut) { ctx.lineTo(tf.x, tf.y); }
+  else { ctx.quadraticCurveTo((bow.x+tf.x)/2, (bow.y+tf.y)/2+14, tf.x, tf.y); }
+  ctx.stroke(); ctx.setLineDash([]); ctx.restore();
+  // Shackle at bow
+  ctx.beginPath(); ctx.arc(bow.x, bow.y, 5, 0, Math.PI*2);
+  ctx.fillStyle = '#ffdd44'; ctx.fill();
+  ctx.strokeStyle = '#cc9900'; ctx.lineWidth = 1; ctx.stroke();
+  // Shackle at tug
+  ctx.beginPath(); ctx.arc(tf.x, tf.y, 4, 0, Math.PI*2);
+  ctx.fillStyle = '#ffdd44'; ctx.fill();
+}
+
+// ── Ship Sprite ──
+function drawShipSprite() {
   ctx.save();
   ctx.translate(ship.x, ship.y);
   ctx.rotate(ship.angle);
-
-  const l = ship.len/2, w = ship.wid/2;
-
-  // Hull shadow
-  ctx.shadowColor = 'rgba(0,0,0,0.4)';
-  ctx.shadowBlur  = 8;
-  ctx.shadowOffsetX = 2; ctx.shadowOffsetY = 3;
-
-  // Hull gradient
-  const grad = ctx.createLinearGradient(-l, -w, -l, w);
-  grad.addColorStop(0, '#2a5580');
-  grad.addColorStop(0.5, '#1a3a5c');
-  grad.addColorStop(1, '#0f2233');
-  ctx.fillStyle = grad;
-
-  // Ship shape (pointed bow)
-  ctx.beginPath();
-  ctx.moveTo(l, 0);                   // bow tip
-  ctx.lineTo(l - 14, -w);
-  ctx.lineTo(-l + 8, -w);
-  ctx.lineTo(-l, -w * 0.6);
-  ctx.lineTo(-l, w * 0.6);
-  ctx.lineTo(-l + 8, w);
-  ctx.lineTo(l - 14, w);
-  ctx.closePath();
-  ctx.fill();
-  ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
-
-  // Deck line
-  ctx.strokeStyle = '#3a6a9a';
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.moveTo(l - 16, 0); ctx.lineTo(-l + 10, 0);
-  ctx.stroke();
-
-  // Superstructure
-  ctx.fillStyle = '#d8c88e';
-  ctx.fillRect(-l * 0.3, -w * 0.55, l * 0.55, w * 1.1);
-  ctx.fillStyle = '#e8d89e';
-  ctx.fillRect(-l * 0.1, -w * 0.8, l * 0.25, w * 0.45);
-
-  // Windows
-  ctx.fillStyle = '#aaddff';
-  for (let i = 0; i < 3; i++) {
-    ctx.fillRect(-l*0.05 + i*6 - 6, -w*0.65, 4, 3);
+  // Drop shadow
+  ctx.shadowColor = 'rgba(0,0,0,0.4)'; ctx.shadowBlur = 10; ctx.shadowOffsetX = 3; ctx.shadowOffsetY = 4;
+  const sl = ship.len, sw = ship.wid * 1.8;
+  if (imgShip.complete && imgShip.naturalWidth) {
+    ctx.drawImage(imgShip, -sl/2, -sw/2, sl, sw);
+  } else {
+    ctx.fillStyle = '#1a3a5c'; ctx.fillRect(-sl/2, -sw/2, sl, sw);
   }
-
-  // Bow marker (where cable attaches)
-  ctx.beginPath();
-  ctx.arc(l - 5, 0, 4, 0, Math.PI*2);
-  ctx.fillStyle = phase === 'approach' ? '#00ffcc' : '#ffcc00';
+  ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
+  // Bow connect indicator
+  const bowX = sl/2 - 8;
+  ctx.beginPath(); ctx.arc(bowX, 0, 6, 0, Math.PI*2);
+  ctx.fillStyle = phase === 'approach' ? 'rgba(0,255,180,0.85)' : 'rgba(255,200,0,0.8)';
   ctx.fill();
-
-  // Waterline reflection
-  ctx.fillStyle = 'rgba(0,150,255,0.15)';
-  ctx.beginPath();
-  ctx.ellipse(0, w + 3, l * 0.85, 5, 0, 0, Math.PI*2);
-  ctx.fill();
-
+  ctx.strokeStyle = phase === 'approach' ? '#00ffaa' : '#ffaa00';
+  ctx.lineWidth = 2; ctx.stroke();
+  // Pulsing ring when approachable
+  if (phase === 'approach') {
+    const bow = shipBow(), tf = tugFront();
+    if (Math.hypot(tf.x-bow.x, tf.y-bow.y) < CONNECT_DIST * 1.5) {
+      const pulse = 0.5 + 0.5*Math.sin(Date.now()*0.008);
+      ctx.beginPath(); ctx.arc(bowX, 0, 10+pulse*6, 0, Math.PI*2);
+      ctx.strokeStyle = `rgba(0,255,180,${0.4*pulse})`;
+      ctx.lineWidth = 2; ctx.stroke();
+    }
+  }
   ctx.restore();
 }
 
-function drawTug() {
+// ── Tug Sprite ──
+function drawTugSprite() {
   ctx.save();
   ctx.translate(tug.x, tug.y);
   ctx.rotate(tug.angle);
-
-  const l = tug.len/2, w = tug.wid/2;
-
-  ctx.shadowColor = 'rgba(0,0,0,0.4)';
-  ctx.shadowBlur  = 6;
-  ctx.shadowOffsetX = 1; ctx.shadowOffsetY = 2;
-
-  // Hull
-  const grad = ctx.createLinearGradient(-l, -w, -l, w);
-  grad.addColorStop(0, '#cc4400');
-  grad.addColorStop(0.5, '#992200');
-  grad.addColorStop(1, '#661100');
-  ctx.fillStyle = grad;
-
-  ctx.beginPath();
-  ctx.moveTo(l, 0);
-  ctx.lineTo(l - 8, -w);
-  ctx.lineTo(-l, -w * 0.8);
-  ctx.lineTo(-l - 2, 0);
-  ctx.lineTo(-l, w * 0.8);
-  ctx.lineTo(l - 8, w);
-  ctx.closePath();
-  ctx.fill();
+  ctx.shadowColor = 'rgba(0,0,0,0.4)'; ctx.shadowBlur = 8; ctx.shadowOffsetX = 2; ctx.shadowOffsetY = 3;
+  const tl = tug.len, tw = tug.wid * 2.0;
+  if (imgTug.complete && imgTug.naturalWidth) {
+    ctx.drawImage(imgTug, -tl/2, -tw/2, tl, tw);
+  } else {
+    ctx.fillStyle = '#cc2200'; ctx.fillRect(-tl/2, -tw/2, tl, tw);
+  }
   ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
-
-  // Cabin
-  ctx.fillStyle = '#ffee88';
-  ctx.fillRect(-l * 0.2, -w * 0.75, l * 0.5, w * 1.5);
-  // Window
-  ctx.fillStyle = '#aaddff';
-  ctx.fillRect(-l * 0.05, -w * 0.65, l * 0.2, w * 0.5);
-
-  // Exhaust pipe
-  ctx.fillStyle = '#444';
-  ctx.fillRect(-l * 0.15, -w * 0.9, 5, 8);
-  // Smoke
-  if (Math.random() > 0.3) {
-    ctx.beginPath();
-    ctx.arc(-l * 0.12, -w * 1.1, 3, 0, Math.PI*2);
-    ctx.fillStyle = 'rgba(180,180,180,0.4)';
-    ctx.fill();
-  }
-
-  // Wake
-  ctx.restore();
-  ctx.save();
-  ctx.translate(tug.x, tug.y);
-  ctx.rotate(tug.angle + Math.PI);
-  const speed = Math.hypot(tug.vx, tug.vy);
-  if (speed > 0.3) {
-    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
-    ctx.lineWidth = speed * 2;
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    ctx.moveTo(l, 0);
-    ctx.lineTo(l + speed * 15, 0);
-    ctx.stroke();
-  }
-
+  // Exhaust smoke puffs (animated)
+  const smokePhase = (Date.now() * 0.002) % 1;
+  const smokeY = -tw/2 - 4 - smokePhase * 8;
+  ctx.beginPath(); ctx.arc(-tl*0.12, smokeY, 3+smokePhase*3, 0, Math.PI*2);
+  ctx.fillStyle = `rgba(180,180,180,${0.4*(1-smokePhase)})`;
+  ctx.fill();
   ctx.restore();
 }
 
+// ── Particles ──
 function drawParticles() {
   for (const p of particles) {
     ctx.globalAlpha = p.life;
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, p.r * p.life, 0, Math.PI*2);
-    ctx.fillStyle = p.color;
-    ctx.fill();
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.r*p.life, 0, Math.PI*2);
+    ctx.fillStyle = p.color; ctx.fill();
   }
   ctx.globalAlpha = 1;
 }
-
 function spawnParticles(x, y, color, n) {
   for (let i = 0; i < n; i++) {
-    const angle = Math.random() * Math.PI * 2;
-    const speed = 1 + Math.random() * 3;
-    particles.push({
-      x, y,
-      vx: Math.cos(angle) * speed,
-      vy: Math.sin(angle) * speed,
-      r: 3 + Math.random() * 4,
-      color,
-      life: 1,
-    });
+    const a = Math.random()*Math.PI*2, s = 1+Math.random()*3.5;
+    particles.push({ x, y, vx:Math.cos(a)*s, vy:Math.sin(a)*s, r:3+Math.random()*5, color, life:1 });
   }
 }
 
-function drawConnectButton() {
-  const bw = 110, bh = 44;
-  const bx = W - bw - 14;
-  const by = H - bh - 14;
-  connectBtnRect = { x: bx, y: by, w: bw, h: bh };
+// ── Connect Button ──
+function drawConnectBtn() {
+  const bw=120, bh=48, bx=W-bw-16, by=H-bh-16;
+  connectBtnRect = {x:bx, y:by, w:bw, h:bh};
 
-  let label = '';
-  let bgColor = 'rgba(0,80,120,0.75)';
-  let borderColor = 'rgba(0,180,255,0.6)';
-  let textColor = '#7df4ff';
-  let enabled = false;
+  let label='', bg='rgba(0,70,110,0.8)', border='rgba(0,180,255,0.5)', fg='#7df4ff', glow=false;
 
   if (phase === 'approach') {
-    const bow = shipBow();
-    const tf  = tugFront();
-    const dist = Math.hypot(tf.x - bow.x, tf.y - bow.y);
-    enabled = dist < CONNECT_DIST;
-    label   = enabled ? '🔗 CONECTAR' : '⚓ APROXIMAR';
-    if (enabled) { bgColor = 'rgba(0,150,80,0.85)'; borderColor = '#00ff88'; textColor = '#00ff88'; }
+    const bow=shipBow(), tf=tugFront();
+    const near = Math.hypot(tf.x-bow.x, tf.y-bow.y) < CONNECT_DIST;
+    label  = near ? '🔗 CONECTAR' : '⚓ APROXIMAR';
+    if (near) { bg='rgba(0,140,70,0.9)'; border='#00ff88'; fg='#00ff88'; glow=true; }
   } else if (phase === 'towing') {
-    const tb = targetBerth;
-    const dist = Math.hypot(ship.x - (tb.x+tb.w/2), ship.y - (tb.y+tb.h/2));
-    enabled = dist < 120;
-    label   = enabled ? '✂️ SOLTAR' : '🚢 REBOCANDO';
-    if (enabled) { bgColor = 'rgba(150,80,0,0.85)'; borderColor = '#ffaa00'; textColor = '#ffcc44'; }
+    const tb=targetBerth;
+    const near = Math.hypot(ship.x-(tb.x+tb.w/2), ship.y-(tb.y+tb.h/2)) < 130;
+    label  = near ? '✂️ SOLTAR CABO' : '🚢 REBOCANDO';
+    if (near) { bg='rgba(140,70,0,0.9)'; border='#ffaa00'; fg='#ffcc44'; glow=true; }
   } else if (phase === 'pushing') {
-    label = '⬆️ EMPURRAR';
-    bgColor = 'rgba(80,0,120,0.75)';
-    borderColor = '#aa44ff';
-    textColor = '#dd88ff';
+    label='⬆️ EMPURRAR'; bg='rgba(70,0,110,0.8)'; border='#aa44ff'; fg='#dd88ff';
   } else {
-    label = '✅ ATRACADO!';
-    bgColor = 'rgba(0,100,50,0.85)';
-    borderColor = '#00ff88';
-    textColor = '#00ff88';
+    label='✅ ATRACADO!'; bg='rgba(0,90,45,0.9)'; border='#00ff88'; fg='#00ff88'; glow=true;
   }
 
   ctx.save();
-  ctx.beginPath();
-  ctx.roundRect(bx, by, bw, bh, 12);
-  ctx.fillStyle = bgColor;
-  ctx.fill();
-  ctx.strokeStyle = borderColor;
-  ctx.lineWidth = 2;
-  ctx.stroke();
-
-  ctx.fillStyle = textColor;
-  ctx.font = 'bold 12px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(label, bx + bw/2, by + bh/2);
+  if (glow) { ctx.shadowColor = border; ctx.shadowBlur = 14; }
+  ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 14);
+  ctx.fillStyle=bg; ctx.fill();
+  ctx.strokeStyle=border; ctx.lineWidth=2; ctx.stroke();
+  ctx.shadowBlur=0;
+  ctx.fillStyle=fg; ctx.font='bold 13px sans-serif';
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText(label, bx+bw/2, by+bh/2);
   ctx.restore();
 }
 
+// ── Joystick ──
 function drawJoystick() {
-  const cx = 55, cy = H - 55;
-  const outerR = 42, innerR = 18;
-  // Outer ring
-  ctx.beginPath();
-  ctx.arc(cx, cy, outerR, 0, Math.PI*2);
-  ctx.fillStyle = 'rgba(0,30,60,0.5)';
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(0,180,255,0.3)';
-  ctx.lineWidth = 2;
-  ctx.stroke();
-
-  // Direction arrows
-  ctx.fillStyle = 'rgba(0,180,255,0.2)';
-  ctx.font = '14px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('▲', cx, cy - 26);
-  ctx.fillText('▼', cx, cy + 26);
-  ctx.fillText('◀', cx - 26, cy);
-  ctx.fillText('▶', cx + 26, cy);
-
-  // Knob
-  const kx = cx + (joyActive ? joyDX : 0);
-  const ky = cy + (joyActive ? joyDY : 0);
-  const kGrad = ctx.createRadialGradient(kx-3, ky-3, 1, kx, ky, innerR);
-  kGrad.addColorStop(0, '#4488cc');
-  kGrad.addColorStop(1, '#002244');
-  ctx.beginPath();
-  ctx.arc(kx, ky, innerR, 0, Math.PI*2);
-  ctx.fillStyle = kGrad;
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(0,180,255,0.5)';
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
+  const cx=58, cy=H-58, outerR=44, innerR=20;
+  ctx.beginPath(); ctx.arc(cx, cy, outerR, 0, Math.PI*2);
+  ctx.fillStyle='rgba(0,20,50,0.55)'; ctx.fill();
+  ctx.strokeStyle='rgba(0,160,255,0.28)'; ctx.lineWidth=2; ctx.stroke();
+  ctx.fillStyle='rgba(0,160,255,0.18)';
+  ctx.font='15px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText('▲',cx,cy-27); ctx.fillText('▼',cx,cy+27);
+  ctx.fillText('◀',cx-27,cy); ctx.fillText('▶',cx+27,cy);
+  const kx=cx+(joyActive?joyDX:0), ky=cy+(joyActive?joyDY:0);
+  const kg=ctx.createRadialGradient(kx-4,ky-4,1,kx,ky,innerR);
+  kg.addColorStop(0,'#3377bb'); kg.addColorStop(1,'#001133');
+  ctx.beginPath(); ctx.arc(kx,ky,innerR,0,Math.PI*2);
+  ctx.fillStyle=kg; ctx.fill();
+  ctx.strokeStyle='rgba(0,180,255,0.5)'; ctx.lineWidth=1.5; ctx.stroke();
 }
 
+// ── Phase hint ──
 function drawPhaseHint() {
-  const hintEl = document.getElementById('hint');
-  if (phase === 'approach') {
-    const bow = shipBow();
-    const tf  = tugFront();
-    const dist = Math.hypot(tf.x - bow.x, tf.y - bow.y);
-    hintEl.textContent = dist < CONNECT_DIST
-      ? '✅ Pressione CONECTAR!'
-      : '🚤 Aproxime a proa do navio';
-  } else if (phase === 'towing') {
-    hintEl.textContent = '🚢 Reboque pelo corredor de boias';
-  } else if (phase === 'pushing') {
-    hintEl.textContent = '⬆️ Empurre o navio para o cais';
-  } else {
-    hintEl.textContent = mission + 1 < totalMissions ? '🎉 Atracado! Próxima missão...' : '🏆 Todas as missões concluídas!';
-  }
+  const el = document.getElementById('hint');
+  const bow=shipBow(), tf=tugFront();
+  const near = phase==='approach' && Math.hypot(tf.x-bow.x, tf.y-bow.y)<CONNECT_DIST;
+  const hints = {
+    approach: near ? '✅ Pressione CONECTAR!' : '🚤 Aproxime da proa do navio',
+    towing:   '🚢 Reboque pelo corredor · não bata nas boias!',
+    pushing:  '⬆️ Encoste e empurre o navio para o cais',
+    docked:   mission+1 < totalMissions ? '🎉 Atracado! Próxima missão...' : '🏆 Todas as missões concluídas!',
+  };
+  el.textContent = hints[phase] || '';
 }
 
-// ─── Overlay screens ─────────────────────────────────────────────────────────
+// ─── Overlay ──────────────────────────────────────────────────────────────────
 function showVictory() {
   const ov = document.getElementById('overlay');
   ov.innerHTML = `
     <h1>🏆 VITÓRIA!</h1>
-    <p>Você atracou todos os ${totalMissions} navios!<br>
-    Pontuação final: <strong style="color:#ffd700;font-size:22px">${score}</strong></p>
-    <p style="font-size:12px;opacity:.7">Penalidades por boias: ${buoyHits * PENALTY} pts</p>
-    <button id="btn-restart">JOGAR NOVAMENTE</button>
-  `;
-  ov.style.display = 'flex';
+    <p>Você atracou todos os ${totalMissions} navios com sucesso!</p>
+    <p>Pontuação final: <strong style="color:#ffd700;font-size:24px">${score}</strong></p>
+    <p style="font-size:11px;opacity:.65">Boias atingidas: ${buoyHits} × ${PENALTY} pts de penalidade</p>
+    <button id="btn-restart">JOGAR NOVAMENTE</button>`;
+  ov.style.display='flex';
   document.getElementById('btn-restart').addEventListener('click', startGame);
 }
-
 function updateUI() {
-  document.getElementById('ui-mission').textContent = `Missão ${mission + 1} / ${totalMissions}`;
+  document.getElementById('ui-mission').textContent = `Missão ${mission+1} / ${totalMissions}`;
   document.getElementById('ui-score').textContent   = `Pontos: ${score}`;
-  const phases = { approach:'Aproximar', towing:'Rebocando', pushing:'Empurrando', docked:'Atracado' };
-  document.getElementById('ui-phase').textContent   = `Fase: ${phases[phase] || phase}`;
+  const label = {approach:'Aproximar',towing:'Rebocando',pushing:'Empurrando',docked:'Atracado!'};
+  document.getElementById('ui-phase').textContent   = `Fase: ${label[phase]||phase}`;
 }
 
-// ─── Utils ───────────────────────────────────────────────────────────────────
-function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
-function angleDiff(a, b) {
-  let d = a - b;
-  while (d >  Math.PI) d -= Math.PI*2;
-  while (d < -Math.PI) d += Math.PI*2;
+// ─── Utils ────────────────────────────────────────────────────────────────────
+const clamp = (v,lo,hi) => v<lo?lo:v>hi?hi:v;
+function angleDiff(a,b) {
+  let d=a-b;
+  while(d> Math.PI) d-=Math.PI*2;
+  while(d<-Math.PI) d+=Math.PI*2;
   return d;
 }
 
-// ─── Game loop ───────────────────────────────────────────────────────────────
+// ─── Loop ─────────────────────────────────────────────────────────────────────
 let lastTime = 0;
-function loop(ts) {
-  const dt = ts - lastTime;
-  lastTime = ts;
-  update(dt);
-  draw();
-  requestAnimationFrame(loop);
-}
+function loop(ts) { const dt=ts-lastTime; lastTime=ts; update(dt); draw(); requestAnimationFrame(loop); }
 
-// ─── Start ───────────────────────────────────────────────────────────────────
 function startGame() {
-  score = 0;
-  mission = 0;
-  const ov = document.getElementById('overlay');
-  ov.style.display = 'none';
+  score=0; mission=0;
+  document.getElementById('overlay').style.display='none';
   buildLevel();
 }
 
