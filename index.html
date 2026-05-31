@@ -863,8 +863,9 @@ function drawMissionPopup(){
   if(!missionPopup) return;
   missionPopup.timer++;
   missionPopup.alpha=Math.min(1,missionPopup.alpha+0.055);
+  const POPUP_DUR=300; // ~5s a 60fps
   const p=missionPopup;
-  const pw=Math.min(W*0.88,400), ph=Math.min(H*0.82,360);
+  const pw=Math.min(W*0.88,400), ph=Math.min(H*0.82,370);
   const px=(W-pw)/2, py=(H-ph)/2;
   ctx.save(); ctx.globalAlpha=p.alpha;
 
@@ -883,7 +884,7 @@ function drawMissionPopup(){
   ctx.shadowBlur=0;
 
   // linhas de pontuação
-  const lh=clamp(ph*0.115,28,40), ly0=py+62;
+  const lh=clamp(ph*0.108,26,38), ly0=py+58;
   ctx.font=`${clamp(pw*.054,13,18)}px monospace`;
   p.items.forEach((it,i)=>{
     const ly=ly0+i*lh;
@@ -897,7 +898,7 @@ function drawMissionPopup(){
   ctx.strokeStyle='#1d5f80'; ctx.lineWidth=1.5;
   ctx.beginPath(); ctx.moveTo(px+14,sepY); ctx.lineTo(px+pw-14,sepY); ctx.stroke();
 
-  // total
+  // total missão
   ctx.font=`bold ${clamp(pw*.072,16,24)}px monospace`;
   ctx.textAlign='left';  ctx.fillStyle='#ffffff'; ctx.fillText('TOTAL MISSÃO',px+18,sepY+8);
   ctx.textAlign='right'; ctx.fillStyle='#ffd700';
@@ -908,24 +909,35 @@ function drawMissionPopup(){
   // score acumulado
   ctx.font=`${clamp(pw*.044,11,15)}px monospace`;
   ctx.textAlign='center'; ctx.fillStyle='#88ccee';
-  ctx.fillText(`Score total: ${totalScore} pts`,W/2,sepY+lh+12);
+  ctx.fillText(`Score total: ${totalScore} pts`,W/2,sepY+lh+10);
 
-  // instrução / troféu
+  // troféu (última missão)
   if(p.next==='victory'){
-    ctx.font=`bold ${clamp(pw*.1,22,38)}px sans-serif`;
+    ctx.font=`bold ${clamp(pw*.1,22,34)}px sans-serif`;
     ctx.fillStyle='#ffd700'; ctx.shadowBlur=28; ctx.shadowColor='#ffb000';
-    ctx.fillText('🏆',W/2,sepY+lh+34);
+    ctx.fillText('🏆',W/2,sepY+lh+32);
     ctx.shadowBlur=0;
-    ctx.font=`bold ${clamp(pw*.055,13,18)}px monospace`;
-    ctx.fillStyle='#00ffcc'; ctx.fillText('TODOS OS NAVIOS ATRACADOS!',W/2,sepY+lh+72);
+    ctx.font=`bold ${clamp(pw*.05,12,16)}px monospace`;
+    ctx.fillStyle='#00ffcc'; ctx.fillText('TODOS OS NAVIOS ATRACADOS!',W/2,sepY+lh+62);
   }
 
-  const blink=Math.floor(p.timer/20)%2===0;
-  ctx.font=`${clamp(pw*.042,11,14)}px sans-serif`;
-  ctx.fillStyle=blink?'#ffffff':'#44aacc';
-  ctx.fillText(p.next==='victory'?'Toque para ver resultado final →':'Toque para próxima missão →',W/2,py+ph-18);
+  // barra de progresso automática
+  const barH=10, barY=py+ph-28, barX=px+16, barW=pw-32;
+  const prog=Math.min(1,p.timer/POPUP_DUR);
+  ctx.beginPath(); ctx.roundRect(barX,barY,barW,barH,5);
+  ctx.fillStyle='rgba(0,80,120,.55)'; ctx.fill();
+  const fg=ctx.createLinearGradient(barX,0,barX+barW,0);
+  fg.addColorStop(0,'#00cfff'); fg.addColorStop(1,'#00ffcc');
+  ctx.beginPath(); ctx.roundRect(barX,barY,barW*prog,barH,5);
+  ctx.fillStyle=fg; ctx.fill();
+  ctx.font=`${clamp(pw*.038,10,13)}px sans-serif`;
+  ctx.textAlign='center'; ctx.fillStyle='#aaddee';
+  ctx.fillText(p.next==='victory'?'Resultado final em…':'Próxima missão em…',W/2,barY-6);
 
   ctx.restore();
+
+  // auto-avança quando a barra enche (ou toque antecipado)
+  if(p.timer>=POPUP_DUR) advanceMissionPopup();
 }
 
 function advanceMissionPopup(){
