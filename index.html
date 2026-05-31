@@ -277,8 +277,8 @@ function initAudio(){
   const AC=window.AudioContext||window.webkitAudioContext;
   if(!AC)return;
   audio.ctx=new AC();
-  audio.master=audio.ctx.createGain(); audio.master.gain.value=audio.on?0.5:0; audio.master.connect(audio.ctx.destination);
-  audio.music=audio.ctx.createGain();  audio.music.gain.value=0.18; audio.music.connect(audio.master);
+  audio.master=audio.ctx.createGain(); audio.master.gain.value=audio.on?0.72:0; audio.master.connect(audio.ctx.destination);
+  audio.music=audio.ctx.createGain();  audio.music.gain.value=0.28; audio.music.connect(audio.master);
   audio.sfx=audio.ctx.createGain();    audio.sfx.gain.value=0.5;  audio.sfx.connect(audio.master);
 }
 function blip(freq,start,dur,type,gain,dest){
@@ -313,7 +313,7 @@ function startMusic(){
 function stopMusic(){ if(audio.timer){clearInterval(audio.timer);audio.timer=null;} }
 function toggleMute(){
   audio.on=!audio.on;
-  if(audio.master) audio.master.gain.value=audio.on?0.5:0;
+  if(audio.master) audio.master.gain.value=audio.on?0.72:0;
   if(audio.on&&audio.ctx&&audio.ctx.state==='suspended') audio.ctx.resume();
 }
 function sfx(type){
@@ -797,6 +797,14 @@ function dockSuccess(berth){
   spawnP(ship.x,ship.y,'#ffd700',32); spawnP(ship.x,ship.y,'#00ffcc',20);
   sfx('dock');
   showMsg('✅ Atracado! +'+( 500+tBonus+mBonus+fBonus)+' pts');
+  // Bonus de abastecimento aparecem na bacia após atracar
+  if(mission+1<3){
+    const bx1=basinX+80, bx2=basinX+180;
+    const by=H/2+(mission%2===0?-55:55);
+    collectibles.push({type:'fuel',  x:bx1, y:by,       collected:false, ph:0.5, bonus:true});
+    collectibles.push({type:'wrench',x:bx2, y:H/2-by+H/2, collected:false, ph:2.1, bonus:true});
+    showMsg('✅ Atracado! +bonus ⛽🔧 na bacia');
+  }
   if(mission+1>=3) setTimeout(showVictory,1600);
   else setTimeout(()=>{mission++;buildWorld();},2200);
 }
