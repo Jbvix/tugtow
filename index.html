@@ -236,10 +236,9 @@ const PORT_X      = 4140;
 const WORLD_W     = 4820;
 
 const TUG_SPEED=3.4, TUG_TURN=0.048;
-const CABLE_LEN=72, CABLE_STIFF=0.05;
-// Navio mais pesado: maior arrasto (perde velocidade devagar) e resposta lenta
-const SHIP_DRAG=0.985, SHIP_ANGDRAG=0.965;
-const CONNECT_DIST=52, DOCK_DIST=42, PUSH_FORCE=0.11;
+const CABLE_LEN=72, CABLE_STIFF=0.04;
+const SHIP_DRAG=0.970, SHIP_ANGDRAG=0.940;
+const CONNECT_DIST=52, DOCK_DIST=42, PUSH_FORCE=0.068;
 const BUOY_R=13, BUOY_PEN=80, MAX_LIVES=3;
 const SHIP_LEN=90, SHIP_WID=24;
 const CANAL_AMP=0.22; // amplitude das curvas em fracção de H (≈ 0.22*H de cada lado)
@@ -575,7 +574,10 @@ function update(dt){
       const rel={x:cp.x-ship.x,y:cp.y-ship.y};
       ship.angVel+=(rel.x*Math.sin(tug.angle)*PUSH_FORCE-rel.y*Math.cos(tug.angle)*PUSH_FORCE)*0.003;
     }
-    ship.vx*=SHIP_DRAG; ship.vy*=SHIP_DRAG; ship.angVel*=SHIP_ANGDRAG;
+    // Amortecimento extra na bacia: água rasa freia mais rápido
+    const inBasin = ship.x > basinX;
+    const basinDrag = inBasin ? 0.940 : 1;
+    ship.vx*=SHIP_DRAG*basinDrag; ship.vy*=SHIP_DRAG*basinDrag; ship.angVel*=SHIP_ANGDRAG*basinDrag;
     ship.x+=ship.vx; ship.y+=ship.vy; ship.angle+=ship.angVel;
     applyShipWalls();
     for(const b of berths){
