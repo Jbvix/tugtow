@@ -1769,32 +1769,59 @@ function drawMsg(){
   ctx.restore();
 }
 
-// ─── Ranking (localStorage) ─────────────────────────────────────────────────────
-const RANK_KEY='tugrush_ranking_v1', RANK_MAX=10;
-function loadRanking(){
-  try{ const r=JSON.parse(localStorage.getItem(RANK_KEY)); return Array.isArray(r)?r:[]; }
-  catch(e){ return []; }
+// ─── Ranking — Supabase online + localStorage fallback ───────────────────────
+const RANK_MAX = 10;
+const SB_URL = 'https://nsbeddfkcdyssrirrhzt.supabase.co/rest/v1/scores';
+const SB_KEY = 'sb_publishable_RJjmXL721BwcD8fHfF0jyw_zHtlBlTb';
+const SB_HDR = {'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json'};
+const RANK_KEY = 'tugrush_ranking_v1';
+
+// cache local para evitar múltiplas viagens ao servidor
+let rankCache = null;
+
+async function loadRanking(){
+  try{
+    const r=await fetch(`${SB_URL}?order=score.desc&limit=${RANK_MAX}`,{headers:SB_HDR});
+    if(!r.ok) throw new Error(r.status);
+    const data=await r.json();
+    rankCache=data;
+    // espelha no localStorage como fallback
+    try{ localStorage.setItem(RANK_KEY,JSON.stringify(data)); }catch(e){}
+    return data;
+  }catch(e){
+    // offline ou erro → usa cache local
+    const loc=localStorage.getItem(RANK_KEY);
+    return loc?JSON.parse(loc):[];
+  }
 }
-function rankPosition(sc){
-  const r=loadRanking();
-  let pos=r.filter(e=>e.score>=sc).length;
-  return (pos<RANK_MAX)?pos+1:0; // 0 = não entrou no top
+
+async function rankPosition(sc){
+  const r=rankCache||await loadRanking();
+  const above=r.filter(e=>e.score>=sc).length;
+  return above<RANK_MAX ? above+1 : 0;
 }
-function saveScore(name,sc,time){
-  const r=loadRanking();
-  r.push({name:(name||'ANÔNIMO').slice(0,12).toUpperCase(),score:sc,time:Math.floor(time),date:Date.now()});
-  r.sort((a,b)=>b.score-a.score);
-  const top=r.slice(0,RANK_MAX);
-  try{ localStorage.setItem(RANK_KEY,JSON.stringify(top)); }catch(e){}
-  return top;
+
+async function saveScore(name,sc,time){
+  const payload={name:(name||'ANÔNIMO').slice(0,12).toUpperCase(), score:sc, time:Math.floor(time)};
+  try{
+    const r=await fetch(SB_URL,{method:'POST',headers:{...SB_HDR,'Prefer':'return=minimal'},body:JSON.stringify(payload)});
+    if(!r.ok) throw new Error(r.status);
+  }catch(e){
+    // fallback: salva local
+    const loc=localStorage.getItem(RANK_KEY);
+    const arr=loc?JSON.parse(loc):[];
+    arr.push(payload); arr.sort((a,b)=>b.score-a.score);
+    try{ localStorage.setItem(RANK_KEY,JSON.stringify(arr.slice(0,RANK_MAX))); }catch(e2){}
+  }
+  rankCache=null; // invalida cache
 }
-function rankRowsHTML(highlight){
-  const r=loadRanking();
-  if(!r.length) return `<p style="opacity:.6">Nenhuma pontuação ainda.<br>Seja o primeiro! ⚓</p>`;
+
+function rankRowsHTML(rows, highlightScore){
+  if(!rows||!rows.length) return `<p style="opacity:.6">Nenhuma pontuação ainda.<br>Seja o primeiro! ⚓</p>`;
   const medal=['🥇','🥈','🥉'];
   let h='<div style="width:100%;max-width:330px;font-size:13px">';
-  r.forEach((e,i)=>{
-    const hl=(highlight!=null&&i===highlight);
+  rows.forEach((e,i)=>{
+    const hl=(highlightScore!=null&&e.score===highlightScore&&i===rows.findIndex(x=>x.score===highlightScore));
     h+=`<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;margin:3px 0;border-radius:8px;
         background:${hl?'#ffd70022':'#0a3a5522'};border:1px solid ${hl?'#ffd700':'#1d5f8033'}">
         <span style="width:26px;text-align:center">${medal[i]||(i+1)}</span>
@@ -1805,14 +1832,19 @@ function rankRowsHTML(highlight){
   });
   return h+'</div>';
 }
-function showRanking(){
+
+function showRanking(highlightScore){
   const ov=document.getElementById('overlay');
   ov.innerHTML=`<h1>🏆 RANKING</h1>
-    <h2 style="margin-bottom:10px">TOP ${RANK_MAX}</h2>
-    ${rankRowsHTML()}
+    <h2 style="margin-bottom:6px">TOP ${RANK_MAX} · Global</h2>
+    <p style="opacity:.5;font-size:11px;margin:0 0 8px">Carregando…</p>
     <button id="btn-back">⚓ MENU</button>`;
   ov.style.display='flex';
   document.getElementById('btn-back').addEventListener('click',exitToMenu);
+  loadRanking().then(rows=>{
+    const p=ov.querySelector('p');
+    if(p) p.outerHTML=rankRowsHTML(rows,highlightScore);
+  });
 }
 
 // ─── Overlays ─────────────────────────────────────────────────────────────────
@@ -1820,33 +1852,38 @@ function fmtTime(t){const m=Math.floor(t/60),s=Math.floor(t%60);return `${m}:${s
 function endScreen(titleHTML,subHTML){
   const ov=document.getElementById('overlay');
   const finalScore=score, finalTime=gameTime;
-  const pos=rankPosition(finalScore);
-  let body=`${titleHTML}<p>${subHTML}</p>`;
-  if(pos>0){
-    body+=`<p style="color:#ffd700;font-size:14px">🎉 Você entrou no TOP ${RANK_MAX}! (posição ${pos})</p>
-      <input id="rank-name" maxlength="12" placeholder="SEU NOME" autocomplete="off"
-        style="font-family:inherit;text-transform:uppercase;text-align:center;letter-spacing:2px;
-        font-size:16px;padding:10px 14px;border-radius:10px;border:2px solid #00cfff;
-        background:#04263f;color:#aee6ff;width:min(70vw,220px);outline:none">
-      <button id="btn-save">SALVAR 🏅</button>`;
-  }else{
-    body+=`<button id="btn-rank">🏆 VER RANKING</button>`;
-  }
-  body+=`<button id="btn-restart">${'JOGAR NOVAMENTE'}</button>`;
-  ov.innerHTML=body;
-  ov.style.display='flex';
-  const r=document.getElementById('btn-restart');
-  if(r) r.addEventListener('click',startGame);
-  const rk=document.getElementById('btn-rank');
-  if(rk) rk.addEventListener('click',showRanking);
-  const sv=document.getElementById('btn-save');
-  if(sv){
-    const inp=document.getElementById('rank-name');
-    setTimeout(()=>inp&&inp.focus(),50);
-    const doSave=()=>{ saveScore(inp.value.trim(),finalScore,finalTime); showRanking(); };
-    sv.addEventListener('click',doSave);
-    inp.addEventListener('keydown',e=>{ if(e.key==='Enter')doSave(); });
-  }
+  let body=`${titleHTML}<p>${subHTML}</p>
+    <p style="opacity:.45;font-size:11px">Verificando ranking…</p>
+    <button id="btn-restart">JOGAR NOVAMENTE</button>`;
+  ov.innerHTML=body; ov.style.display='flex';
+  document.getElementById('btn-restart').addEventListener('click',startGame);
+
+  rankPosition(finalScore).then(pos=>{
+    const info=ov.querySelector('p:last-of-type');
+    if(!info) return;
+    if(pos>0){
+      info.outerHTML=`
+        <p style="color:#ffd700;font-size:14px">🎉 Você entrou no TOP ${RANK_MAX}! (posição ${pos})</p>
+        <input id="rank-name" maxlength="12" placeholder="SEU NOME" autocomplete="off"
+          style="font-family:inherit;text-transform:uppercase;text-align:center;letter-spacing:2px;
+          font-size:16px;padding:10px 14px;border-radius:10px;border:2px solid #00cfff;
+          background:#04263f;color:#aee6ff;width:min(70vw,220px);outline:none">
+        <button id="btn-save">SALVAR 🏅</button>`;
+      const inp=ov.querySelector('#rank-name');
+      setTimeout(()=>inp&&inp.focus(),50);
+      const doSave=async()=>{
+        const btn=ov.querySelector('#btn-save');
+        if(btn){ btn.disabled=true; btn.textContent='Salvando…'; }
+        await saveScore(inp.value.trim(),finalScore,finalTime);
+        showRanking(finalScore);
+      };
+      ov.querySelector('#btn-save').addEventListener('click',doSave);
+      inp.addEventListener('keydown',e=>{ if(e.key==='Enter')doSave(); });
+    } else {
+      info.outerHTML=`<button id="btn-rank">🏆 VER RANKING</button>`;
+      ov.querySelector('#btn-rank').addEventListener('click',()=>showRanking());
+    }
+  });
 }
 function showGameOver(){
   endScreen(`<h1 style="color:#ff4444">💀 GAME OVER</h1>`,
