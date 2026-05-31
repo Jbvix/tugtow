@@ -229,6 +229,9 @@ const imgBuoy=svgImg(buoySVG), imgBuoyHit=svgImg(buoyHitSVG);
 // Canal estendido (0 → CHANNEL_END)
 const CHANNEL_END = 2880;
 const BRIDGE_X    = 2800;
+const SHOP_X      = BRIDGE_X + 260; // loja pós-ponte
+const SHOP_RADIUS = 68;
+const SHOP_COST   = 5; // moedas por compra
 const SHIP_X      = 3070;
 const CORRIDOR_X  = 3350;
 const BASIN_X     = 3790;
@@ -262,9 +265,11 @@ let portX, quayBackX, basinX, berthHG, berthSpacingG, berthStartYG;
 let particles=[], wakes=[];
 // contadores por missão
 let missionCoins=0, missionBuoyHits=0, missionCrateHits=0, missionStartTime=0;
-let totalScore=0; // acumulado entre missões
+let totalScore=0;
+let coins=0; // moedas como moeda (carteira)
 let msgText='', msgTimer=0;
 let connectBtnRect=null, restartBtnRect=null, exitBtnRect=null, muteBtnRect=null, pauseBtnRect=null;
+let shopFuelBtnRect=null, shopMaintBtnRect=null;
 
 // ─── Áudio chiptune (Web Audio API, procedural) ─────────────────────────────
 const audio={ctx:null,master:null,music:null,sfx:null,on:true,timer:null,step:0,nextTime:0};
@@ -349,6 +354,8 @@ canvas.addEventListener('touchend',  onTE,{passive:false});
 canvas.addEventListener('mousedown', e=>{
   if(missionPopup&&missionPopup.timer>40){advanceMissionPopup();return;}
   if(handleTopButtons(e.clientX,e.clientY))return;
+  if(shopFuelBtnRect &&inR(e.clientX,e.clientY,shopFuelBtnRect)) {buyShop('fuel');return;}
+  if(shopMaintBtnRect&&inR(e.clientX,e.clientY,shopMaintBtnRect)){buyShop('maint');return;}
   if(connectBtnRect&&inR(e.clientX,e.clientY,connectBtnRect))handleAction();
 });
 
@@ -376,6 +383,8 @@ function onTS(e){
   for(const t of e.changedTouches){
     if(missionPopup&&missionPopup.timer>40){advanceMissionPopup();return;}
     if(handleTopButtons(t.clientX,t.clientY))continue;
+    if(shopFuelBtnRect &&inR(t.clientX,t.clientY,shopFuelBtnRect)) {buyShop('fuel');continue;}
+    if(shopMaintBtnRect&&inR(t.clientX,t.clientY,shopMaintBtnRect)){buyShop('maint');continue;}
     if(connectBtnRect&&inR(t.clientX,t.clientY,connectBtnRect)){handleAction();continue;}
     if(inJoy(t.clientX,t.clientY)&&!joyActive){joyActive=true;joyStartX=t.clientX;joyStartY=t.clientY;joyDX=joyDY=0;}
   }
@@ -699,7 +708,7 @@ function updateCollectibles(){
     } else if(c.type==='coin'){
       if(dist<24){
         c.collected=true;
-        missionCoins++;
+        missionCoins++; coins++;
         score+=25;
         spawnP(c.x,c.y,'#ffd700',10);
         sfx('collect');
@@ -972,6 +981,7 @@ function draw(){
   drawWater();
   drawChannelDeco();
   drawBridge();
+  drawShop();
   drawVessels();
   drawCrates();
   drawCollectibles();
@@ -991,6 +1001,7 @@ function draw(){
   drawTopButtons();
   drawPhaseBar();
   drawActionBtn();
+  drawShopButtons();
   drawJoystick();
   drawMsg();
   drawMissionPopup();
@@ -1526,7 +1537,84 @@ function drawHUD(){
     ctx.textAlign='center'; ctx.textBaseline='top';
     ctx.fillText('⛽ COMBUSTÍVEL CRÍTICO!',W/2,38);
   }
+  // Contador de moedas
+  ctx.textAlign='left'; ctx.textBaseline='top';
+  ctx.fillStyle='#ffd700'; ctx.font='bold 13px monospace';
+  ctx.fillText(`🪙 ${coins}`,lx,32);
   ctx.textAlign='left';
+}
+
+// ─── Loja ─────────────────────────────────────────────────────────────────────
+function inShopZone(){
+  if(!tug||phase!=='channel') return false;
+  return Math.abs((tug.x+camX)-SHOP_X)<SHOP_RADIUS && tug.x>BRIDGE_X;
+}
+function buyShop(type){
+  if(coins<SHOP_COST){ showMsg(`🪙 Sem moedas! (faltam ${SHOP_COST-coins})`); return; }
+  if(type==='fuel'){
+    if(fuel>=1){ showMsg('⛽ Tanque já cheio!'); return; }
+    coins-=SHOP_COST; fuel=Math.min(1,fuel+0.50);
+    score=Math.max(0,score-SHOP_COST*25); // desconta das moedas do score tb
+    spawnP(tug.x,tug.y,'#ff9922',12); sfx('collect');
+    showMsg(`⛽ +50% comb. (−${SHOP_COST}🪙)`);
+  } else {
+    if(maintenance>=1){ showMsg('🔧 Manutenção já 100%!'); return; }
+    coins-=SHOP_COST; maintenance=Math.min(1,maintenance+0.50);
+    score=Math.max(0,score-SHOP_COST*25);
+    spawnP(tug.x,tug.y,'#44ee88',12); sfx('collect');
+    showMsg(`🔧 +50% manut. (−${SHOP_COST}🪙)`);
+  }
+}
+function drawShop(){
+  const sx=SHOP_X, sy=canalY(SHOP_X);
+  const now=Date.now();
+  const bob=Math.sin(now*.0018)*3;
+  ctx.save();
+  // plataforma
+  ctx.beginPath(); ctx.roundRect(sx-38,sy-22+bob,76,44,10);
+  ctx.fillStyle='#0d3348'; ctx.fill();
+  ctx.strokeStyle='#00cfff'; ctx.lineWidth=2; ctx.stroke();
+  // ícones
+  ctx.font='18px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText('⛽',sx-14,sy+bob);
+  ctx.fillText('🔧',sx+14,sy+bob);
+  // placa preço
+  const pulse=0.5+0.5*Math.sin(now*.004);
+  ctx.shadowBlur=12*pulse; ctx.shadowColor='#ffd700';
+  ctx.fillStyle='#ffd700'; ctx.font=`bold 9px monospace`;
+  ctx.fillText(`${SHOP_COST}🪙 cada`,sx,sy-14+bob);
+  ctx.shadowBlur=0;
+  // anel de proximidade quando tug está perto
+  if(inShopZone()){
+    const r=SHOP_RADIUS-4;
+    ctx.beginPath(); ctx.arc(sx,sy,r,0,Math.PI*2);
+    ctx.strokeStyle=`rgba(0,207,255,${0.3+0.2*pulse})`; ctx.lineWidth=2; ctx.stroke();
+  }
+  ctx.restore();
+}
+function drawShopButtons(){
+  shopFuelBtnRect=null; shopMaintBtnRect=null;
+  if(!inShopZone()) return;
+  const bw=clamp(W*0.28,90,140), bh=44, gap=12;
+  const tot=bw*2+gap, bx=(W-tot)/2, by=H/2+60;
+  shopFuelBtnRect ={x:bx,       y:by,w:bw,h:bh};
+  shopMaintBtnRect={x:bx+bw+gap,y:by,w:bw,h:bh};
+  function shopBtn(r,icon,label,ok){
+    ctx.save();
+    ctx.beginPath(); ctx.roundRect(r.x,r.y,r.w,r.h,12);
+    ctx.fillStyle=ok?'rgba(0,30,55,.88)':'rgba(40,10,10,.8)';
+    ctx.fill();
+    ctx.strokeStyle=ok?'#00cfff':'#553333'; ctx.lineWidth=2; ctx.stroke();
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.font=`18px sans-serif`; ctx.fillText(icon,r.x+r.w/2,r.y+r.h/2-7);
+    ctx.font=`bold 11px monospace`;
+    ctx.fillStyle=ok?'#ffd700':'#885555';
+    ctx.fillText(`${SHOP_COST}🪙 ${label}`,r.x+r.w/2,r.y+r.h/2+10);
+    ctx.restore();
+  }
+  const canBuy=coins>=SHOP_COST;
+  shopBtn(shopFuelBtnRect, '⛽','Combustível', canBuy&&fuel<1);
+  shopBtn(shopMaintBtnRect,'🔧','Manutenção',  canBuy&&maintenance<1);
 }
 
 function drawTopButtons(){
@@ -1803,7 +1891,7 @@ function loop(ts){
 }
 function startGame(){
   gameState='playing'; lives=MAX_LIVES; fuel=1; maintenance=1; score=0; mission=0; gameTime=0;
-  totalScore=0; missionPopup=null; missionCoins=0; missionBuoyHits=0; missionCrateHits=0;
+  totalScore=0; coins=0; missionPopup=null; missionCoins=0; missionBuoyHits=0; missionCrateHits=0;
   document.getElementById('overlay').style.display='none';
   buildWorld();
   startMusic();
