@@ -33,23 +33,36 @@
 
   /* ─── Menu / overlays ──────────────────────────────────────────── */
   #overlay{
-    position:fixed;inset:0;background:rgba(0,8,22,.94);
+    position:fixed;inset:0;background:rgba(0,8,22,.95);
     display:flex;flex-direction:column;align-items:center;justify-content:center;
-    gap:14px;z-index:20;
+    gap:0;z-index:20;padding:16px;box-sizing:border-box;
   }
-  #overlay .title-logo{width:min(30vw,130px);margin-bottom:-6px;filter:drop-shadow(0 0 18px #00cfff77)}
-  #overlay h1{color:#7df4ff;font-size:clamp(30px,8vw,52px);text-shadow:0 0 24px #00cfff;
-    letter-spacing:4px;font-weight:900}
+  #overlay .title-logo{width:min(28vw,110px);margin-bottom:6px;filter:drop-shadow(0 0 18px #00cfff77)}
+  #overlay h1{color:#7df4ff;font-size:clamp(28px,8vw,52px);text-shadow:0 0 24px #00cfff;
+    letter-spacing:4px;font-weight:900;margin:0 0 2px}
   #overlay h1 span{color:#ffd86b;text-shadow:0 0 22px #ffb000}
-  #overlay h2{color:#00cfff;font-size:clamp(13px,3.5vw,19px);letter-spacing:2px}
-  #overlay p{color:#aaddee;font-size:clamp(11px,2.5vw,13px);text-align:center;max-width:400px;line-height:1.75}
-  #overlay .credit{color:#6fa8c4;font-size:11px;letter-spacing:1px;margin-top:2px}
+  #overlay h2{color:#00cfff;font-size:clamp(11px,3vw,16px);letter-spacing:3px;
+    margin:0 0 14px;opacity:.85}
+  #overlay .menu-steps{
+    display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;
+    max-width:320px;width:100%;margin-bottom:14px;
+  }
+  #overlay .menu-steps span{
+    color:#aaddee;font-size:clamp(10px,2.4vw,12px);
+    background:rgba(0,80,140,.28);border:1px solid rgba(0,180,255,.18);
+    border-radius:8px;padding:5px 9px;display:flex;align-items:center;gap:5px;line-height:1.3;
+  }
+  #overlay .menu-ctrl{
+    color:#5599bb;font-size:clamp(9px,2vw,11px);letter-spacing:.5px;
+    margin-bottom:16px;text-align:center;
+  }
+  #overlay .credit{color:#6fa8c4;font-size:11px;letter-spacing:1px;margin-top:12px}
   #overlay .credit b{color:#ffd86b}
   #overlay button{
     padding:13px 46px;font-size:17px;font-weight:700;
     background:linear-gradient(135deg,#005588,#00cfff);
     color:#fff;border:none;border-radius:30px;cursor:pointer;
-    box-shadow:0 0 28px #00cfff55;letter-spacing:1px;margin-top:6px;
+    box-shadow:0 0 28px #00cfff55;letter-spacing:1px;margin-top:8px;width:min(80vw,260px);
   }
   #overlay button:active{transform:scale(.96)}
 </style>
@@ -106,12 +119,19 @@
   </svg>
   <h1>TUG<span>RUSH</span></h1>
   <h2>⚓ Rebocador Arcade</h2>
-  <p>Navegue pelo canal movimentado · colete 🔧 manutenção · ⛽ combustível · 🗝️ chave<br>
-     Cruze a ponte bipartida · conecte ao navio · atravesse o corredor de boias<br>
-     e atraque os 3 navios no porto!</p>
-  <p style="opacity:.6;font-size:11px">📱 Joystick esquerdo · Botão AÇÃO (direito) &nbsp;|&nbsp; 🖥️ WASD/Setas · Espaço</p>
+  <div class="menu-steps">
+    <span>🔧 Colete manutenção</span>
+    <span>⛽ Colete combustível</span>
+    <span>🗝️ Pegue a chave</span>
+    <span>🌉 Cruze a ponte</span>
+    <span>⛵ Conecte ao navio</span>
+    <span>🚧 Desvie das boias</span>
+    <span>🪙 Colete moedas</span>
+    <span>⚓ Atraque no porto</span>
+  </div>
+  <div class="menu-ctrl">📱 Joystick · Botão AÇÃO &nbsp;|&nbsp; 🖥️ WASD · Espaço</div>
   <button id="btn-start">ZARPAR ⚓</button>
-  <button id="btn-ranking" style="background:#063a55;border-color:#ffd70066;color:#ffe066">🏆 RANKING</button>
+  <button id="btn-ranking" style="background:#063a55;border:2px solid #ffd70066;color:#ffe066">🏆 RANKING</button>
   <div class="credit">TugLife Games · por <b>Jossian Brito</b> · 2026</div>
 </div>
 <script>
