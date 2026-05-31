@@ -260,6 +260,9 @@ let tug, ship, buoys, berths, targetBerth;
 let vessels, collectibles, bridge, crates;
 let portX, quayBackX, basinX, berthHG, berthSpacingG, berthStartYG;
 let particles=[], wakes=[];
+// contadores por missão
+let missionCoins=0, missionBuoyHits=0, missionCrateHits=0, missionStartTime=0;
+let totalScore=0; // acumulado entre missões
 let msgText='', msgTimer=0;
 let connectBtnRect=null, restartBtnRect=null, exitBtnRect=null, muteBtnRect=null, pauseBtnRect=null;
 
@@ -343,7 +346,11 @@ let joyActive=false, joyStartX=0, joyStartY=0, joyDX=0, joyDY=0;
 canvas.addEventListener('touchstart',onTS,{passive:false});
 canvas.addEventListener('touchmove', onTM,{passive:false});
 canvas.addEventListener('touchend',  onTE,{passive:false});
-canvas.addEventListener('mousedown', e=>{if(handleTopButtons(e.clientX,e.clientY))return; if(connectBtnRect&&inR(e.clientX,e.clientY,connectBtnRect))handleAction();});
+canvas.addEventListener('mousedown', e=>{
+  if(missionPopup&&missionPopup.timer>40){advanceMissionPopup();return;}
+  if(handleTopButtons(e.clientX,e.clientY))return;
+  if(connectBtnRect&&inR(e.clientX,e.clientY,connectBtnRect))handleAction();
+});
 
 function togglePause(){
   if(gameState==='playing'){ gameState='paused'; if(audio.ctx) audio.ctx.suspend(); }
@@ -367,6 +374,7 @@ function inR(x,y,r){return x>=r.x&&x<=r.x+r.w&&y>=r.y&&y<=r.y+r.h;}
 function onTS(e){
   e.preventDefault();
   for(const t of e.changedTouches){
+    if(missionPopup&&missionPopup.timer>40){advanceMissionPopup();return;}
     if(handleTopButtons(t.clientX,t.clientY))continue;
     if(connectBtnRect&&inR(t.clientX,t.clientY,connectBtnRect)){handleAction();continue;}
     if(inJoy(t.clientX,t.clientY)&&!joyActive){joyActive=true;joyStartX=t.clientX;joyStartY=t.clientY;joyDX=joyDY=0;}
@@ -385,7 +393,7 @@ function onTE(e){e.preventDefault();joyActive=false;joyDX=joyDY=0;}
 
 // ─── Build world ──────────────────────────────────────────────────────────────
 function buildWorld(){
-  // Gaveta dimensionada ao COMPRIMENTO do navio (atraca na transversal, facilitando)
+  missionCoins=0; missionBuoyHits=0; missionCrateHits=0; missionStartTime=gameTime;
   portX=PORT_X; const berthW=Math.max(120,SHIP_LEN+34);
   berthHG=Math.max(70,SHIP_WID*1.8+34); berthSpacingG=berthHG+22;
   berthStartYG=H/2-(3*berthHG+2*22)/2; quayBackX=portX+berthW; basinX=BASIN_X;
@@ -653,7 +661,7 @@ function updateCrates(){
     if(c.hit) continue;
     // Rebocador colide → avaria
     if(Math.hypot(tug.x-c.x,tug.y-c.y)<tug.len/2+cr-2){
-      c.hit=true;
+      c.hit=true; missionCrateHits++;
       maintenance=Math.max(0,maintenance-0.22);
       const ang=Math.atan2(tug.y-c.y,tug.x-c.x);
       tug.vx+=Math.cos(ang)*1.6; tug.vy+=Math.sin(ang)*1.6;
@@ -691,6 +699,7 @@ function updateCollectibles(){
     } else if(c.type==='coin'){
       if(dist<24){
         c.collected=true;
+        missionCoins++;
         score+=25;
         spawnP(c.x,c.y,'#ffd700',10);
         sfx('collect');
@@ -788,13 +797,13 @@ function checkBuoys(){
   const cs=shipCorners();
   for(const b of buoys){
     if(b.hit)continue;
-    if(ptNearPoly(b.x,b.y,cs,b.r+4)){b.hit=true;score=Math.max(0,score-BUOY_PEN);spawnP(b.x,b.y,'#ff4444',10);}
+    if(ptNearPoly(b.x,b.y,cs,b.r+4)){b.hit=true;missionBuoyHits++;score=Math.max(0,score-BUOY_PEN);spawnP(b.x,b.y,'#ff4444',10);}
   }
 }
 function checkTugBuoys(){
   for(const b of buoys){
     if(b.hit)continue;
-    if(Math.hypot(tug.x-b.x,tug.y-b.y)<tug.len/2+b.r){b.hit=true;score=Math.max(0,score-BUOY_PEN);spawnP(b.x,b.y,'#ff8800',8);}
+    if(Math.hypot(tug.x-b.x,tug.y-b.y)<tug.len/2+b.r){b.hit=true;missionBuoyHits++;score=Math.max(0,score-BUOY_PEN);spawnP(b.x,b.y,'#ff8800',8);}
   }
 }
 function shipCorners(){
@@ -816,25 +825,115 @@ function dSeg(px,py,ax,ay,bx,by){
   return Math.hypot(px-(ax+t*dx),py-(ay+t*dy));
 }
 
+// ─── Popup canvas de Missão Cumprida ──────────────────────────────────────────
+let missionPopup=null; // {items, total, next:'mission'|'victory', timer}
 function dockSuccess(berth){
   if(phase==='docked')return;
   phase='docked'; berth.docked=true; targetBerth=berth;
-  const tBonus=Math.max(0,300-Math.floor(Date.now()/100)%300);
-  const mBonus=Math.round(maintenance*120), fBonus=Math.round(fuel*80);
-  score+=500+tBonus+mBonus+fBonus;
   spawnP(ship.x,ship.y,'#ffd700',32); spawnP(ship.x,ship.y,'#00ffcc',20);
   sfx('dock');
-  showMsg('✅ Atracado! +'+( 500+tBonus+mBonus+fBonus)+' pts');
-  // Bonus de abastecimento aparecem na bacia após atracar
-  if(mission+1<3){
-    const bx1=basinX+80, bx2=basinX+180;
-    const by=H/2+(mission%2===0?-55:55);
-    collectibles.push({type:'fuel',  x:bx1, y:by,       collected:false, ph:0.5, bonus:true});
-    collectibles.push({type:'wrench',x:bx2, y:H/2-by+H/2, collected:false, ph:2.1, bonus:true});
-    showMsg('✅ Atracado! +bonus ⛽🔧 na bacia');
+
+  const elapsed=gameTime-missionStartTime;
+  const coinPts  = missionCoins*25;
+  const timeBonus= Math.max(0, Math.round(300 - elapsed*0.5));
+  const buoyBonus= Math.max(0,(6-missionBuoyHits)*30);
+  const crateBonus=Math.max(0,(5-missionCrateHits)*25);
+  const dockBase = 500;
+  const mTotal   = dockBase+coinPts+timeBonus+buoyBonus+crateBonus;
+  score += mTotal;
+  totalScore = score;
+
+  missionPopup={
+    items:[
+      {label:'Atracação base',  val:dockBase,   icon:'⚓'},
+      {label:`Moedas (×${missionCoins})`,val:coinPts,  icon:'🪙'},
+      {label:'Bônus de tempo',  val:timeBonus,  icon:'⏱'},
+      {label:`Boias OK (${Math.max(0,6-missionBuoyHits)}/6)`, val:buoyBonus, icon:'🚧'},
+      {label:`Containers OK (${Math.max(0,5-missionCrateHits)}/5)`,val:crateBonus,icon:'📦'},
+    ],
+    total: mTotal,
+    mission: mission+1,
+    next: (mission+1>=3)?'victory':'mission',
+    timer: 0,
+    alpha: 0,
+  };
+}
+
+function drawMissionPopup(){
+  if(!missionPopup) return;
+  missionPopup.timer++;
+  missionPopup.alpha=Math.min(1,missionPopup.alpha+0.055);
+  const p=missionPopup;
+  const pw=Math.min(W*0.88,400), ph=Math.min(H*0.82,360);
+  const px=(W-pw)/2, py=(H-ph)/2;
+  ctx.save(); ctx.globalAlpha=p.alpha;
+
+  // fundo
+  ctx.beginPath(); ctx.roundRect(px,py,pw,ph,18);
+  const bg=ctx.createLinearGradient(px,py,px,py+ph);
+  bg.addColorStop(0,'#021830'); bg.addColorStop(1,'#04304a');
+  ctx.fillStyle=bg; ctx.fill();
+  ctx.strokeStyle='#00cfff'; ctx.lineWidth=2; ctx.stroke();
+
+  // título
+  ctx.shadowBlur=22; ctx.shadowColor='#00ffcc';
+  ctx.fillStyle='#00ffcc'; ctx.font=`bold ${clamp(pw*.08,18,28)}px monospace`;
+  ctx.textAlign='center'; ctx.textBaseline='top';
+  ctx.fillText(`✅ MISSÃO ${p.mission} CUMPRIDA!`,W/2,py+18);
+  ctx.shadowBlur=0;
+
+  // linhas de pontuação
+  const lh=clamp(ph*0.115,28,40), ly0=py+62;
+  ctx.font=`${clamp(pw*.054,13,18)}px monospace`;
+  p.items.forEach((it,i)=>{
+    const ly=ly0+i*lh;
+    ctx.textAlign='left';  ctx.fillStyle='#aaddee'; ctx.fillText(`${it.icon} ${it.label}`,px+18,ly);
+    ctx.textAlign='right'; ctx.fillStyle=it.val>0?'#ffd700':'#ff6666';
+    ctx.fillText(`+${it.val}`,px+pw-18,ly);
+  });
+
+  // separador
+  const sepY=ly0+p.items.length*lh+4;
+  ctx.strokeStyle='#1d5f80'; ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.moveTo(px+14,sepY); ctx.lineTo(px+pw-14,sepY); ctx.stroke();
+
+  // total
+  ctx.font=`bold ${clamp(pw*.072,16,24)}px monospace`;
+  ctx.textAlign='left';  ctx.fillStyle='#ffffff'; ctx.fillText('TOTAL MISSÃO',px+18,sepY+8);
+  ctx.textAlign='right'; ctx.fillStyle='#ffd700';
+  ctx.shadowBlur=16; ctx.shadowColor='#ffb000';
+  ctx.fillText(`+${p.total} pts`,px+pw-18,sepY+8);
+  ctx.shadowBlur=0;
+
+  // score acumulado
+  ctx.font=`${clamp(pw*.044,11,15)}px monospace`;
+  ctx.textAlign='center'; ctx.fillStyle='#88ccee';
+  ctx.fillText(`Score total: ${totalScore} pts`,W/2,sepY+lh+12);
+
+  // instrução / troféu
+  if(p.next==='victory'){
+    ctx.font=`bold ${clamp(pw*.1,22,38)}px sans-serif`;
+    ctx.fillStyle='#ffd700'; ctx.shadowBlur=28; ctx.shadowColor='#ffb000';
+    ctx.fillText('🏆',W/2,sepY+lh+34);
+    ctx.shadowBlur=0;
+    ctx.font=`bold ${clamp(pw*.055,13,18)}px monospace`;
+    ctx.fillStyle='#00ffcc'; ctx.fillText('TODOS OS NAVIOS ATRACADOS!',W/2,sepY+lh+72);
   }
-  if(mission+1>=3) setTimeout(showVictory,1600);
-  else setTimeout(()=>{mission++;buildWorld();},2200);
+
+  const blink=Math.floor(p.timer/20)%2===0;
+  ctx.font=`${clamp(pw*.042,11,14)}px sans-serif`;
+  ctx.fillStyle=blink?'#ffffff':'#44aacc';
+  ctx.fillText(p.next==='victory'?'Toque para ver resultado final →':'Toque para próxima missão →',W/2,py+ph-18);
+
+  ctx.restore();
+}
+
+function advanceMissionPopup(){
+  if(!missionPopup) return;
+  const next=missionPopup.next;
+  missionPopup=null;
+  if(next==='victory') showVictory();
+  else{ mission++; buildWorld(); fuel=1; maintenance=1; }
 }
 
 function loseLife(reason){
@@ -882,6 +981,7 @@ function draw(){
   drawActionBtn();
   drawJoystick();
   drawMsg();
+  drawMissionPopup();
 }
 
 function drawWater(){
@@ -1691,6 +1791,7 @@ function loop(ts){
 }
 function startGame(){
   gameState='playing'; lives=MAX_LIVES; fuel=1; maintenance=1; score=0; mission=0; gameTime=0;
+  totalScore=0; missionPopup=null; missionCoins=0; missionBuoyHits=0; missionCrateHits=0;
   document.getElementById('overlay').style.display='none';
   buildWorld();
   startMusic();
