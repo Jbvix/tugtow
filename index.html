@@ -261,7 +261,7 @@ let vessels, collectibles, bridge, crates;
 let portX, quayBackX, basinX, berthHG, berthSpacingG, berthStartYG;
 let particles=[], wakes=[];
 let msgText='', msgTimer=0;
-let connectBtnRect=null, restartBtnRect=null, exitBtnRect=null, muteBtnRect=null;
+let connectBtnRect=null, restartBtnRect=null, exitBtnRect=null, muteBtnRect=null, pauseBtnRect=null;
 
 // ─── Áudio chiptune (Web Audio API, procedural) ─────────────────────────────
 const audio={ctx:null,master:null,music:null,sfx:null,on:true,timer:null,step:0,nextTime:0};
@@ -333,7 +333,11 @@ function sfx(type){
 
 // ─── Input ────────────────────────────────────────────────────────────────────
 const keys={};
-window.addEventListener('keydown',e=>{keys[e.key]=true; if(e.key===' ')handleAction();});
+window.addEventListener('keydown',e=>{
+  keys[e.key]=true;
+  if(e.key===' ')handleAction();
+  if(e.key==='p'||e.key==='P'||e.key==='Escape')(gameState==='playing'||gameState==='paused')&&togglePause();
+});
 window.addEventListener('keyup',  e=>{keys[e.key]=false;});
 let joyActive=false, joyStartX=0, joyStartY=0, joyDX=0, joyDY=0;
 canvas.addEventListener('touchstart',onTS,{passive:false});
@@ -341,7 +345,13 @@ canvas.addEventListener('touchmove', onTM,{passive:false});
 canvas.addEventListener('touchend',  onTE,{passive:false});
 canvas.addEventListener('mousedown', e=>{if(handleTopButtons(e.clientX,e.clientY))return; if(connectBtnRect&&inR(e.clientX,e.clientY,connectBtnRect))handleAction();});
 
+function togglePause(){
+  if(gameState==='playing'){ gameState='paused'; if(audio.ctx) audio.ctx.suspend(); }
+  else if(gameState==='paused'){ gameState='playing'; if(audio.ctx) audio.ctx.resume(); }
+}
 function handleTopButtons(x,y){
+  if(gameState!=='playing'&&gameState!=='paused')return false;
+  if(pauseBtnRect&&inR(x,y,pauseBtnRect)){ togglePause(); return true; }
   if(gameState!=='playing')return false;
   if(muteBtnRect&&inR(x,y,muteBtnRect)){ toggleMute(); return true; }
   if(restartBtnRect&&inR(x,y,restartBtnRect)){ startGame(); return true; }
@@ -587,6 +597,24 @@ function update(dt){
 
   if(phase==='towing'||phase==='pushing') checkBuoys();
   checkTugBuoys();
+
+  // Separação tug↔ship: evita sobreposição quando não estão conectados pelo cabo
+  if(phase==='channel'||phase==='pushing'){
+    const cp=closestOnShip(tug.x,tug.y);
+    const ddx=tug.x-cp.x, ddy=tug.y-cp.y;
+    const dist=Math.hypot(ddx,ddy)||0.001;
+    const minD=tug.len/2+ship.wid/2+2;
+    if(dist<minD){
+      const pen=(minD-dist)/dist;
+      const nx=ddx*pen, ny=ddy*pen;
+      // rebate o tug (mais leve) e amorte o navio levemente
+      tug.x+=nx*0.7; tug.y+=ny*0.7;
+      ship.x-=nx*0.3; ship.y-=ny*0.3;
+      const imp=(tug.vx*ddx+tug.vy*ddy)/dist*0.25;
+      tug.vx-=imp*ddx/dist; tug.vy-=imp*ddy/dist;
+      ship.vx+=imp*ddx/dist*0.15; ship.vy+=imp*ddy/dist*0.15;
+    }
+  }
 
   // Particles
   for(let i=particles.length-1;i>=0;i--){
@@ -1391,11 +1419,11 @@ function drawHUD(){
 
 function drawTopButtons(){
   const bs=34, gap=8;
-  // posiciona abaixo do HUD, no canto direito
-  const y=58, x3=W-bs-12, x2=x3-bs-gap, x1=x2-bs-gap;
-  muteBtnRect   ={x:x1,y,w:bs,h:bs};
-  restartBtnRect={x:x2,y,w:bs,h:bs};
-  exitBtnRect   ={x:x3,y,w:bs,h:bs};
+  const y=58, x4=W-bs-12, x3=x4-bs-gap, x2=x3-bs-gap, x1=x2-bs-gap;
+  pauseBtnRect  ={x:x1,y,w:bs,h:bs};
+  muteBtnRect   ={x:x2,y,w:bs,h:bs};
+  restartBtnRect={x:x3,y,w:bs,h:bs};
+  exitBtnRect   ={x:x4,y,w:bs,h:bs};
   function btn(r,icon,col){
     ctx.save();
     ctx.beginPath(); ctx.roundRect(r.x,r.y,r.w,r.h,9);
@@ -1406,6 +1434,8 @@ function drawTopButtons(){
     ctx.fillText(icon,r.x+r.w/2,r.y+r.h/2+1);
     ctx.restore();
   }
+  const paused=gameState==='paused';
+  btn(pauseBtnRect,paused?'▶':'⏸',paused?'#aaff88':'#ffd86b');
   btn(muteBtnRect,audio.on?'🔊':'🔇',audio.on?'#88ddff':'#ff9966');
   btn(restartBtnRect,'↻','#7df4ff');
   btn(exitBtnRect,'⏏','#ff7766');
@@ -1640,9 +1670,23 @@ function showMsg(t){msgText=t;msgTimer=160;}
 
 // ─── Loop ─────────────────────────────────────────────────────────────────────
 let lastTime=0;
+function drawPauseOverlay(){
+  ctx.save();
+  ctx.fillStyle='rgba(0,10,28,0.62)'; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#ffd86b'; ctx.font=`bold ${clamp(W*.09,32,64)}px monospace`;
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.shadowBlur=28; ctx.shadowColor='#ffb000';
+  ctx.fillText('⏸ PAUSA',W/2,H/2-18);
+  ctx.shadowBlur=0; ctx.fillStyle='#aaddee';
+  ctx.font=`${clamp(W*.035,13,18)}px sans-serif`;
+  ctx.fillText('Toque ⏸ ou pressione P / Esc para continuar',W/2,H/2+28);
+  drawTopButtons();
+  ctx.restore();
+}
 function loop(ts){
   const dt=ts-lastTime; lastTime=ts;
   if(gameState==='playing'&&tug){update(dt);draw();}
+  else if(gameState==='paused'){drawPauseOverlay();}
   requestAnimationFrame(loop);
 }
 function startGame(){
