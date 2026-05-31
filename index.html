@@ -447,8 +447,6 @@ function buildWorld(){
     {type:'wrench',x:1950, y:H*0.20,collected:false,ph:1.2},
     {type:'fuel',  x:2300, y:H*0.66,collected:false,ph:2.7},
     {type:'key',   x:2600, y:H*0.50,collected:false,ph:3.1},
-    // Posto de combustível logo após a ponte
-    {type:'fuel',  x:BRIDGE_X+140, y:H*0.40,collected:false,ph:0.4},
     ...coins,
   ];
 
@@ -748,15 +746,18 @@ function applyBridgeCollision(){
   const inXspan=Math.abs(tug.x-bridge.x)<tug.len/2+gW/2;
 
   if(inXspan){
-    // Esmagamento pelos portões
-    if(!bridge.locked && passageH<tug.wid*1.5 && tug.x>bridge.x-tug.len/2){
+    const stillinside = tug.x <= bridge.x + tug.len/2; // ainda atravessando, não passou
+    // Esmagamento: só mata se o tug ainda está dentro do vão (não já passou para o outro lado)
+    if(stillinside && !bridge.locked && passageH<tug.wid*1.5){
       loseLife('bridge'); return;
     }
-    // Portões empurram o rebocador para o vão livre
-    if(tug.y<gTop){ tug.y=gTop+tug.wid*0.6; tug.vy= Math.abs(tug.vy)*0.4; }
-    else if(tug.y>gBot){ tug.y=gBot-tug.wid*0.6; tug.vy=-Math.abs(tug.vy)*0.4; }
+    // Portões empurram o rebocador — só quando ainda dentro
+    if(stillinside){
+      if(tug.y<gTop){ tug.y=gTop+tug.wid*0.6; tug.vy= Math.abs(tug.vy)*0.4; }
+      else if(tug.y>gBot){ tug.y=gBot-tug.wid*0.6; tug.vy=-Math.abs(tug.vy)*0.4; }
+    }
   }
-  // Bloqueia enquanto trancada ou vão muito estreito para passar
+  // Bloqueia enquanto trancada ou vão muito estreito para passar (só do lado de cá)
   if((bridge.locked||passageH<tug.wid*2.0) && tug.x>bridge.x-tug.len/2-5 && tug.x<bridge.x){
     tug.x=bridge.x-tug.len/2-5; tug.vx=-Math.abs(tug.vx)*0.5;
     if(bridge.locked) showMsg('🔒 Precisa da chave!');
@@ -1547,7 +1548,7 @@ function drawHUD(){
 // ─── Loja ─────────────────────────────────────────────────────────────────────
 function inShopZone(){
   if(!tug||phase!=='channel') return false;
-  return Math.abs((tug.x+camX)-SHOP_X)<SHOP_RADIUS && tug.x>BRIDGE_X;
+  return Math.abs(tug.x-SHOP_X)<SHOP_RADIUS;
 }
 function buyShop(type){
   if(coins<SHOP_COST){ showMsg(`🪙 Sem moedas! (faltam ${SHOP_COST-coins})`); return; }
