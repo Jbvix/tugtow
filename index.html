@@ -541,13 +541,23 @@ function update(dt){
   if(keys['ArrowLeft']||keys['a']||keys['A']) turn=-1;
   if(keys['ArrowRight']||keys['d']||keys['D']) turn=1;
   if(Math.hypot(joyDX,joyDY)>4){
-    const jA=Math.atan2(joyDY,joyDX),d=angleDiff(jA,tug.angle);
-    turn=Math.sign(d)*Math.min(Math.abs(d)/0.5,1);
-    thrust=Math.cos(d)*(Math.hypot(joyDX,joyDY)/40);
+    const jA=Math.atan2(joyDY,joyDX);
+    const d=angleDiff(jA,tug.angle);       // diff entre joystick e proa
+    const mag=Math.hypot(joyDX,joyDY)/40; // 0..1
+    if(Math.abs(d)<Math.PI*0.65){
+      // semicírculo frontal: vira + avança normalmente
+      turn=Math.sign(d)*Math.min(Math.abs(d)/0.5,1);
+      thrust=Math.cos(d)*mag;
+    } else {
+      // semicírculo traseiro: ré sem girar (permite puxar Bow-to-Bow)
+      turn=0;
+      thrust=-mag*0.55; // ré com 55% da potência de avanço
+    }
   }
 
-  const mF=0.5+maintenance*0.5; // maint affects speed
-  const fF=fuel>0.02?1:0.08;    // fuel stall
+  const mF=0.5+maintenance*0.5;
+  const fF=fuel>0.02?1:0.08;
+  tug.reversing=(thrust<-0.05); // flag para visual de ré
   tug.angle+=turn*TUG_TURN;
   const eff=TUG_SPEED*thrust*mF*fF;
   tug.vx+=Math.cos(tug.angle)*eff*0.12;
@@ -1502,6 +1512,14 @@ function drawTugSprite(){
   const sp=(Date.now()*.0022)%1;
   ctx.beginPath(); ctx.arc(-tl*.12,-tw/2-4-sp*9,3+sp*3,0,Math.PI*2);
   ctx.fillStyle=`rgba(180,180,180,${.38*(1-sp)})`; ctx.fill();
+  // Luz de ré (popa) — pisca vermelho quando em marcha-à-ré
+  if(tug.reversing){
+    const blink=Math.floor(Date.now()/120)%2===0;
+    ctx.beginPath(); ctx.arc(-tl/2+4,0,4,0,Math.PI*2);
+    ctx.fillStyle=blink?'#ff2200':'#881100';
+    ctx.shadowBlur=blink?12:0; ctx.shadowColor='#ff2200';
+    ctx.fill(); ctx.shadowBlur=0;
+  }
   ctx.restore();
 }
 
