@@ -130,7 +130,10 @@
     <span>⚓ Atraque no porto</span>
   </div>
   <div class="menu-ctrl">📱 Joystick · Botão AÇÃO &nbsp;|&nbsp; 🖥️ WASD · Espaço</div>
-  <button id="btn-start">ZARPAR ⚓</button>
+  <div style="display:flex;gap:10px;width:min(80vw,280px)">
+    <button id="btn-start"  style="flex:1;padding:13px 10px;font-size:15px">⚓ Nível 1</button>
+    <button id="btn-start2" style="flex:1;padding:13px 10px;font-size:15px;background:linear-gradient(135deg,#1a5500,#44cc44);box-shadow:0 0 24px #44cc4455">🚢 Nível 2</button>
+  </div>
   <button id="btn-ranking" style="background:#063a55;border:2px solid #ffd70066;color:#ffe066">🏆 RANKING</button>
   <div class="credit">TugLife Games · por <b>Jossian Brito</b> · 2026</div>
 </div>
@@ -281,6 +284,7 @@ let lives, fuel, maintenance, score, mission, gameTime;
 let invTimer=0, fuelWarnTimer=0;
 let tug, ship, buoys, berths, targetBerth;
 let vessels, collectibles, bridge, crates;
+let gameLevel=1; // 1=clássico  2=reboque direto
 let portX, quayBackX, basinX, berthHG, berthSpacingG, berthStartYG;
 let particles=[], wakes=[];
 // contadores por missão
@@ -430,49 +434,83 @@ function buildWorld(){
   berths=Array.from({length:3},(_,i)=>({
     x:portX, y:berthStartYG+i*berthSpacingG, w:berthW, h:berthHG, docked:false, id:i
   }));
+  // Nível 2: todos os 3 berços disponíveis em sequência; nível 1: progressão normal
   for(let i=0;i<mission;i++) berths[i%3].docked=true;
   targetBerth=berths[mission%3]; targetBerth.docked=false;
 
-  const chY=targetBerth.y+berthHG/2, hW=46, nP=6;
-  buoys=[];
-  for(let i=0;i<=nP;i++){
-    const bx=CORRIDOR_X+(basinX-CORRIDOR_X)*(i/nP);
-    buoys.push({x:bx,y:chY-hW,r:BUOY_R,hit:false,wobble:Math.random()*Math.PI*2});
-    buoys.push({x:bx,y:chY+hW,r:BUOY_R,hit:false,wobble:Math.random()*Math.PI*2});
+  const chY=targetBerth.y+berthHG/2, hW=46;
+
+  if(gameLevel===2){
+    // ── NÍVEL 2: Reboque Direto ─────────────────────────────────────────────
+    // Tug e navio largam juntos no início do canal, já conectados
+    tug ={x:160, y:H/2, vx:0,vy:0, angle:0, len:44, wid:20};
+    ship={x:160+CABLE_LEN+SHIP_LEN/2, y:H/2, vx:0,vy:0,
+          angle:0, angVel:0, len:SHIP_LEN, wid:SHIP_WID, connected:true};
+
+    // Ponte já desbloqueada e aberta no nível 2
+    bridge={x:BRIDGE_X, locked:false, openAmt:1, t:0, period:4000};
+
+    // Corredor de boias reduzido (apenas 3 pares em vez de 6)
+    buoys=[];
+    const nP=3;
+    for(let i=0;i<=nP;i++){
+      const bx=CORRIDOR_X+(basinX-CORRIDOR_X)*(i/nP);
+      buoys.push({x:bx,y:chY-hW,r:BUOY_R,hit:false,wobble:Math.random()*Math.PI*2});
+      buoys.push({x:bx,y:chY+hW,r:BUOY_R,hit:false,wobble:Math.random()*Math.PI*2});
+    }
+
+    // Apenas moedas — sem wrench/fuel/key (ponte já aberta, sem necessidade de chave)
+    const coinSpots=[200,450,700,1000,1300,1600,1900,2200,2500,2750,
+                     BRIDGE_X+200,BRIDGE_X+400,CORRIDOR_X+100,BASIN_X+150];
+    collectibles=coinSpots.map((cx,i)=>({
+      type:'coin', x:cx, y:canalY(cx)+(i%2===0?-42:42), collected:false, ph:i*0.71
+    }));
+
+    // Menos tráfego: apenas 4 vasos menores
+    vessels=makeVessels().slice(0,4);
+    // Sem caixas no nível 2
+    crates=[];
+    phase='towing';
+
+  } else {
+    // ── NÍVEL 1: Clássico ──────────────────────────────────────────────────
+    buoys=[];
+    const nP=6;
+    for(let i=0;i<=nP;i++){
+      const bx=CORRIDOR_X+(basinX-CORRIDOR_X)*(i/nP);
+      buoys.push({x:bx,y:chY-hW,r:BUOY_R,hit:false,wobble:Math.random()*Math.PI*2});
+      buoys.push({x:bx,y:chY+hW,r:BUOY_R,hit:false,wobble:Math.random()*Math.PI*2});
+    }
+    ship={x:SHIP_X,y:H*0.35,vx:0,vy:0,angle:0,angVel:0,len:SHIP_LEN,wid:SHIP_WID,connected:false};
+    tug ={x:80,y:H/2,vx:0,vy:0,angle:0,len:44,wid:20};
+    bridge={x:BRIDGE_X, locked:true, openAmt:0, t:0, period:3000};
+
+    const coinSpots=[
+      150,350,500,720,900,1100,1280,1450,1650,1820,
+      2000,2150,2400,2550,2700,
+      BRIDGE_X+220, BRIDGE_X+380, BRIDGE_X+520,
+      SHIP_X+200, CORRIDOR_X+80, CORRIDOR_X+240, BASIN_X+120, BASIN_X+320,
+    ];
+    const coins=coinSpots.map((cx,i)=>({
+      type:'coin', x:cx, y:canalY(cx)+(i%2===0?-38:38), collected:false, ph:i*0.71
+    }));
+    collectibles=[
+      {type:'wrench',x:230,  y:H*0.22,collected:false,ph:0},
+      {type:'fuel',  x:560,  y:H*0.72,collected:false,ph:1.6},
+      {type:'wrench',x:1080, y:H*0.30,collected:false,ph:2.2},
+      {type:'fuel',  x:1480, y:H*0.78,collected:false,ph:0.9},
+      {type:'wrench',x:1950, y:H*0.20,collected:false,ph:1.2},
+      {type:'fuel',  x:2300, y:H*0.66,collected:false,ph:2.7},
+      {type:'key',   x:2600, y:H*0.50,collected:false,ph:3.1},
+      ...coins,
+    ];
+    vessels=makeVessels();
+    crates=makeCrates();
+    phase='channel';
   }
 
-  ship={x:SHIP_X,y:H*0.35,vx:0,vy:0,angle:0,angVel:0,len:SHIP_LEN,wid:SHIP_WID,connected:false};
-  tug ={x:80,    y:H/2,   vx:0,vy:0,angle:0,len:44,wid:20};
-
-  bridge={x:BRIDGE_X, locked:true, openAmt:0, t:0, period:3000};
-
-  // Moedas espalhadas ao longo do percurso (25pts cada)
-  const coinSpots=[
-    150,350,500,720,900,1100,1280,1450,1650,1820,
-    2000,2150,2400,2550,2700,
-    BRIDGE_X+220, BRIDGE_X+380, BRIDGE_X+520,
-    SHIP_X+200, CORRIDOR_X+80, CORRIDOR_X+240, BASIN_X+120, BASIN_X+320,
-  ];
-  const coins=coinSpots.map((cx,i)=>({
-    type:'coin', x:cx,
-    y:canalY(cx)+(i%2===0?-38:38),
-    collected:false, ph:i*0.71
-  }));
-
-  collectibles=[
-    {type:'wrench',x:230,  y:H*0.22,collected:false,ph:0},
-    {type:'fuel',  x:560,  y:H*0.72,collected:false,ph:1.6},
-    {type:'wrench',x:1080, y:H*0.30,collected:false,ph:2.2},
-    {type:'fuel',  x:1480, y:H*0.78,collected:false,ph:0.9},
-    {type:'wrench',x:1950, y:H*0.20,collected:false,ph:1.2},
-    {type:'fuel',  x:2300, y:H*0.66,collected:false,ph:2.7},
-    {type:'key',   x:2600, y:H*0.50,collected:false,ph:3.1},
-    ...coins,
-  ];
-
-  vessels=makeVessels();
-  crates=makeCrates();
-  phase='channel'; particles=[]; wakes=[]; camX=0; invTimer=0; fuelWarnTimer=0;
+  particles=[]; wakes=[]; camX=0; invTimer=0; fuelWarnTimer=0;
+  if(gameLevel===2) setTimeout(()=>showMsg('🚢 Nível 2 · Navegue até o porto!'),400);
 }
 
 function makeVessels(){
@@ -1561,13 +1599,16 @@ function drawHUD(){
   drawBar(lx,barY,barW,barH,maintenance,'#44ee88','🔧 MANUT.');
   drawBar(lx+barW+48,barY,barW,barH,fuel,'#ff9933','⛽ COMB.');
 
-  // Score + cronômetro
+  // Score + cronômetro + nível
   ctx.textAlign='right'; ctx.textBaseline='top';
   ctx.fillStyle='#7df4ff'; ctx.font='bold 14px monospace';
   ctx.fillText(`⭐ ${score}`,W-12,14);
   const mm=Math.floor(gameTime/60), ss=Math.floor(gameTime%60);
   ctx.fillStyle='#ffe066'; ctx.font='bold 13px monospace';
   ctx.fillText(`⏱ ${mm}:${ss<10?'0':''}${ss}`,W-12,32);
+  ctx.fillStyle=gameLevel===2?'#44ff88':'#aaddee';
+  ctx.font='bold 11px monospace';
+  ctx.fillText(gameLevel===2?'🚢 NÍV.2':'⚓ NÍV.1',W-12,48);
 
   // Fuel warning
   if(fuel<0.15){
@@ -1715,17 +1756,23 @@ function drawBar(x,y,w,h,val,color,label){
 }
 
 function drawPhaseBar(){
-  const stages=[
+  const stages= gameLevel===2 ? [
+    {label:'REBOQUE', active:phase==='towing'&&ship&&ship.x<basinX},
+    {label:'BACIA',   active:(phase==='towing'&&ship&&ship.x>=basinX)||phase==='pushing'},
+    {label:'CAIS',    active:phase==='docked'},
+  ] : [
     {label:'CANAL',   active:phase==='channel'},
     {label:'NAVIO',   active:phase==='channel'&&tug&&tug.x>BRIDGE_X},
     {label:'BOIAS',   active:phase==='towing'&&ship&&ship.x<basinX},
     {label:'BACIA',   active:(phase==='towing'&&ship&&ship.x>=basinX)||phase==='pushing'},
     {label:'CAIS',    active:phase==='docked'},
   ];
-  const curIdx=phase==='docked'?4:
+  const curIdx= gameLevel===2 ?
+    (phase==='docked'?2:(phase==='pushing'||(phase==='towing'&&ship&&ship.x>=basinX))?1:0) :
+    (phase==='docked'?4:
                (phase==='pushing'||(phase==='towing'&&ship&&ship.x>=basinX))?3:
                phase==='towing'?2:
-               (tug&&tug.x>BRIDGE_X)?1:0;
+               (tug&&tug.x>BRIDGE_X)?1:0);
 
   // Zona segura: entre o joystick (dir. ~102) e o botão de ação (esq. W-146)
   const safeL=110, safeR=W-154, safeW=Math.max(120,safeR-safeL);
@@ -1965,14 +2012,16 @@ function loop(ts){
   else if(gameState==='paused'){drawPauseOverlay();}
   requestAnimationFrame(loop);
 }
-function startGame(){
+function startGame(level){
+  gameLevel=level||1;
   gameState='playing'; lives=MAX_LIVES; fuel=1; maintenance=1; score=0; mission=0; gameTime=0;
   totalScore=0; coins=0; missionPopup=null; missionCoins=0; missionBuoyHits=0; missionCrateHits=0;
   document.getElementById('overlay').style.display='none';
   buildWorld();
   startMusic();
 }
-document.getElementById('btn-start').addEventListener('click',startGame);
+document.getElementById('btn-start') .addEventListener('click',()=>startGame(1));
+document.getElementById('btn-start2').addEventListener('click',()=>startGame(2));
 document.getElementById('btn-ranking').addEventListener('click',showRanking);
 
 // ─── Splash → Menu ──────────────────────────────────────────────────────────
