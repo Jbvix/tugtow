@@ -293,6 +293,8 @@ function makeWaypoints_L2(){
 // ─── State ────────────────────────────────────────────────────────────────────
 let gameState='menu', phase;
 let camX=0, waveOffset=0;
+let shakeTimer=0, shakeAmt=0;
+let floatTexts=[];
 let lives, fuel, maintenance, score, mission, gameTime;
 let invTimer=0, fuelWarnTimer=0;
 let tug, ship, buoys, berths, targetBerth;
@@ -567,7 +569,7 @@ function buildWorld(){
     phase='channel';
   }
 
-  particles=[]; wakes=[]; camX=0; invTimer=0; fuelWarnTimer=0;
+  particles=[]; wakes=[]; floatTexts=[]; camX=0; invTimer=0; fuelWarnTimer=0; shakeTimer=0;
   if(gameLevel===2) setTimeout(()=>showMsg('🚢 Nível 2 · Navegue até o porto!'),400);
 }
 
@@ -680,8 +682,12 @@ function update(dt){
   tug.y=clamp(tug.y,22,H-22);
   applyTugWalls();
 
-  // Camera follows tug
-  camX=clamp(tug.x-W*0.35,0,activeWorldW-W);
+  // Camera follows tug (lerp)
+  const targetCam=clamp(tug.x-W*0.35,0,activeWorldW-W);
+  camX+=(targetCam-camX)*0.12;
+
+  // Screen shake decay
+  if(shakeTimer>0) shakeTimer--;
 
   // Fuel & maintenance drain
   const spd=Math.hypot(tug.vx,tug.vy);
@@ -747,6 +753,7 @@ function update(dt){
         wp.collected=true; waypointCount++;
         score+=150; missionCoins+=6;
         spawnP(wp.x,wp.y,'#00aaff',18); spawnP(wp.x,wp.y,'#ffffff',10);
+        spawnFloat(wp.x,wp.y-30,'+150','#44ddff');
         sfx('collect');
         showMsg(`🔵 Waypoint! +150 pts (${waypointCount}/8)`);
       }
@@ -871,6 +878,7 @@ function updateCollectibles(){
         c.collected=true;
         missionCoins++; coins++;
         score+=25;
+        spawnFloat(c.x,c.y-20,'+25','#ffd700');
         spawnP(c.x,c.y,'#ffd700',10);
         sfx('collect');
         showMsg(`🪙 +25 · ${score} pts`);
@@ -970,13 +978,13 @@ function checkBuoys(){
   const cs=shipCorners();
   for(const b of buoys){
     if(b.hit)continue;
-    if(ptNearPoly(b.x,b.y,cs,b.r+4)){b.hit=true;missionBuoyHits++;score=Math.max(0,score-BUOY_PEN);spawnP(b.x,b.y,'#ff4444',10);}
+    if(ptNearPoly(b.x,b.y,cs,b.r+4)){b.hit=true;missionBuoyHits++;score=Math.max(0,score-BUOY_PEN);spawnP(b.x,b.y,'#ff4444',10);shakeTimer=8;shakeAmt=5;}
   }
 }
 function checkTugBuoys(){
   for(const b of buoys){
     if(b.hit)continue;
-    if(Math.hypot(tug.x-b.x,tug.y-b.y)<tug.len/2+b.r){b.hit=true;missionBuoyHits++;score=Math.max(0,score-BUOY_PEN);spawnP(b.x,b.y,'#ff8800',8);}
+    if(Math.hypot(tug.x-b.x,tug.y-b.y)<tug.len/2+b.r){b.hit=true;missionBuoyHits++;score=Math.max(0,score-BUOY_PEN);spawnP(b.x,b.y,'#ff8800',8);shakeTimer=8;shakeAmt=5;}
   }
 }
 function shipCorners(){
@@ -1124,6 +1132,7 @@ function advanceMissionPopup(){
 function loseLife(reason){
   if(invTimer>0)return;
   lives--;
+  shakeTimer=18; shakeAmt=10;
   spawnP(tug.x,tug.y,'#ff3300',22);
   sfx(reason==='bridge'?'bridge':'collide');
   const base=reason==='fuel'?'⛽ Sem combustível!':
@@ -1140,8 +1149,10 @@ function loseLife(reason){
 // ─── Draw ─────────────────────────────────────────────────────────────────────
 function draw(){
   ctx.clearRect(0,0,W,H);
+  const shakeX=shakeTimer>0?(Math.random()-0.5)*shakeAmt:0;
+  const shakeY=shakeTimer>0?(Math.random()-0.5)*shakeAmt:0;
   ctx.save();
-  ctx.translate(-camX,0);
+  ctx.translate(-camX+shakeX,shakeY);
   drawWater();
   drawChannelDeco();
   drawBridge();
@@ -1159,6 +1170,7 @@ function draw(){
   drawShipSprite();
   drawTugSprite();
   drawParticles();
+  drawFloatTexts();
   drawFuelStationBar();
   ctx.restore();
   // Screen-fixed UI
@@ -2111,6 +2123,22 @@ function showVictory(){
 // ─── Utils ────────────────────────────────────────────────────────────────────
 const clamp=(v,lo,hi)=>v<lo?lo:v>hi?hi:v;
 function angleDiff(a,b){let d=a-b;while(d>Math.PI)d-=Math.PI*2;while(d<-Math.PI)d+=Math.PI*2;return d;}
+function spawnFloat(x,y,text,color='#ffe033'){
+  floatTexts.push({x,y,text,color,life:1,vy:-1.2});
+}
+function drawFloatTexts(){
+  floatTexts=floatTexts.filter(f=>{
+    f.y+=f.vy; f.life-=0.022;
+    if(f.life<=0) return false;
+    ctx.globalAlpha=f.life;
+    ctx.font='bold 18px monospace';
+    ctx.fillStyle=f.color;
+    ctx.textAlign='center';
+    ctx.fillText(f.text,f.x,f.y);
+    ctx.globalAlpha=1;
+    return true;
+  });
+}
 function spawnP(x,y,color,n){
   for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,s=1+Math.random()*3.5;
     particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,r:3+Math.random()*5,color,life:1});}
